@@ -27,8 +27,7 @@ DEFAULT_UA = (
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 DarAssistantResearchBot/1.0"
 )
 
-# Bot-protection interstitials (Imperva/Incapsula, Cloudflare). They often come back
-# with HTTP 200 but contain no content, so they must not be treated as real pages.
+# Imperva / Cloudflare challenge pages (often HTTP 200 with no content)
 _CHALLENGE_RE = re.compile(
     r"_Incapsula_Resource|Incapsula incident ID|<title>\s*Just a moment\.\.\.\s*</title>"
     r"|cf-chl-|challenges\.cloudflare\.com|Attention Required! \| Cloudflare",

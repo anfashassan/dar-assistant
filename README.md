@@ -9,155 +9,203 @@ app_port: 7860
 pinned: false
 ---
 
-# Haya · هيا: property assistant for DarGlobal & Wasalt
+# Haya
 
-A retrieval-augmented chatbot that answers questions about **DarGlobal** developments and
-**Wasalt** property listings, using data scraped from their public websites and a **free
-OpenRouter model**. Packaged with Docker and deployed on Hugging Face Spaces.
+A chatbot for questions about DarGlobal projects and Wasalt property listings, in English and
+Arabic. It answers from data scraped from darglobal.co.uk and wasalt.sa, uses a free model
+through OpenRouter, and runs as a Docker container on Hugging Face Spaces.
 
-**Live demo:** `https://<your-hf-username>-<space-name>.hf.space`  ·  **API docs:** `/docs`
+**Live:** https://anfashassan-dar-assistant.hf.space  ·  API docs: [`/docs`](https://anfashassan-dar-assistant.hf.space/docs)
 
----
+![Answer with listing cards](docs/answer.png)
 
-## What it does
+Things to try:
 
-| | |
+- Which DarGlobal projects are in Oman?
+- Compare The Astera and Urban Oasis by Missoni
+- Villas for sale in Riyadh under 2 million SAR, then "what about Jeddah?", then "only the newest ones"
+- شقق للإيجار في جدة بثلاث غرف
+- Does DarGlobal have any jobs open?
+
+## Data
+
+Scraped in November 2026 (`data/raw/`, shipped inside the image):
+
+| Source | Content |
 |---|---|
-| **Scrapes** | darglobal.co.uk (project pages, press, blog, partner pages) and wasalt.sa (property listings, company pages, WordPress blog). The scraper respects robots.txt, rate-limits itself, retries, and stops calling a site that blocks it. |
-| **Understands** | Free-text questions in **English and Arabic**, including follow-ups ("what about the cheapest ones?"), typos ("trump towr jedah") and listing requests like *"3-bed villa in Riyadh under 2M"*. |
-| **Retrieves** | Hybrid search: **BM25 + character n-gram TF-IDF** (merged with reciprocal rank fusion) for names, typos and transliterations, plus **multilingual semantic embeddings** for paraphrases ("where is it located?" → "headquartered in London") and a **structured listing filter**, so prices and specs come from the data, not from the model. |
-| **Answers** | Streams a grounded answer from a free OpenRouter model, with clickable citations `[1]` and listing cards `[L1]`. |
-| **Stays up** | Discovers the current free models at startup and falls back between them automatically. Caches repeat answers and rate-limits each visitor. If no model is reachable, it still returns the relevant sources and listings. |
-| **Stays fresh** | Re-scrapes inside the container on a schedule (default every 24 h), checks the result, and swaps in the new index without downtime. If a refresh fails, the last good data keeps serving. |
+| darglobal.co.uk | 402 pages: 37 projects, partner pages, 68 press releases, 209 blog posts, FAQ, investor and careers pages |
+| wasalt.sa | 807 pages (city and category pages, company pages), 3,358 structured listings |
+| blog.wasalt.sa | 500 posts via the WordPress REST API |
 
-## Architecture
+Notes on the scraper (`scraper/`):
+
+- It respects robots.txt, waits 0.75 to 1 second between requests per host, retries with
+  backoff and stops calling a host after 8 failures in a row.
+- darglobal.co.uk is behind an Imperva bot check that answers plain HTTP requests with an
+  empty challenge page (status 200). The scraper detects these pages and, with `--render`,
+  loads them in headless Chromium instead.
+- Wasalt listing URLs come from the sitemaps listed in its robots.txt (about 60,000 listings).
+  The scraper takes an even sample across the sitemap so the data covers many cities, types
+  and price ranges. Wasalt's `llms.txt` allows extraction of public listing content.
+- Listing pages are stored only as structured records (type, city, district, price, beds,
+  size, year). Broker names and phone numbers are not kept.
+- Re-runs merge by URL and ID, so an interrupted or partial run never removes data.
+
+Cleaning:
+
+- Sale or rent comes from the listing URL, not the page text (every Wasalt page header says
+  "Properties for Sale").
+- City spellings are normalised ("Aldammam" → Dammam, "Alttayif" → Taif).
+- 26 listings with impossible prices are dropped at load time, e.g. land "for sale" at
+  SAR 1,828 (the per-m² price shown as the total) or a "rental" at SAR 1.9 billion.
+
+## How it answers
 
 ```mermaid
-flowchart TD
-    A[darglobal.co.uk] --> S
-    B[wasalt.sa + blog API] --> S
-    S["Scraper<br/>robots.txt · rate limit · parsers"] --> D[(data/raw<br/>pages · projects · listings)]
-    subgraph Container["Docker container (Hugging Face Space)"]
-      D --> K["Knowledge base<br/>heading-aware chunks · project cards<br/>portfolio + market summaries"]
-      K --> R["Hybrid retriever<br/>BM25 + char n-grams (RRF)<br/>+ semantic slots (MiniLM, ONNX)"]
-      K --> L["Listing filter<br/>city · type · beds · budget (EN/AR)"]
-      R --> P[Grounded prompt + citations]
-      L --> P
-      P --> O["OpenRouter free models<br/>auto-discovery + fallback"]
-      O --> U["FastAPI · SSE streaming<br/>chat UI (EN/AR, RTL)"]
-      F["Refresher (every 24h)"] -. re-scrape + hot swap .-> K
-    end
+flowchart LR
+    Q[Question] --> R{Small talk?}
+    R -- yes --> M[Model]
+    R -- no --> S[Search pages<br/>BM25 + char n-grams<br/>+ semantic slots]
+    R -- no --> L[Listing filter<br/>city, type, beds, budget]
+    S --> P[Prompt with numbered sources]
+    L --> P
+    P --> M[Free OpenRouter model]
+    M --> A[Streamed answer with citations<br/>and listing cards]
 ```
 
-### Design decisions
+- **Pages** are split by heading into about 16,000 chunks. Search combines BM25 (exact names)
+  with character n-grams (typos, transliterations such as Yasmeen / Yasmin) using reciprocal
+  rank fusion. An Arabic → English glossary lets Arabic questions match English pages.
+- **Semantic search** (`paraphrase-multilingual-MiniLM-L12-v2` via fastembed, ONNX, no PyTorch)
+  fills the last 2 of the 6 sources the model reads. Fusing it into the main ranking lowered
+  hit@1 from 0.89 to 0.72 on name questions, so lexical search keeps the top positions. Vectors
+  are precomputed (int8, 6 MB) and the model is part of the image, so the container starts in
+  about 8 seconds.
+- **Listing questions** go through a structured filter over the listings, so prices in answers
+  always come from real records. Results are spread across price range and district. If
+  nothing matches, filters are relaxed one at a time and the answer says so.
+- **Summaries** are generated for questions that span many pages: projects per country, and
+  median / range / price per m² by city and property type.
+- **Follow-ups** keep the filters from the last three turns ("what about Jeddah?", "cheaper
+  ones?"). Projects named earlier stay in context ("how many bedrooms do the villas have?").
+- **Model**: one call per message. Free models are discovered from OpenRouter's catalogue at
+  startup and tried in order, ending with the `openrouter/free` router. If no model responds,
+  the app still returns the matching sources and listings. Answers are cached for an hour.
+- **Grounding**: facts about DarGlobal and Wasalt must come from the sources and are cited.
+  General questions get a short general answer. Text from scraped pages is treated as data,
+  not instructions.
 
-- **Lexical first, semantic for paraphrases.** BM25 + character n-grams handle exact names (projects, districts, brands), typos and transliterations (Yasmeen/Yasmin); an Arabic→English glossary lets Arabic questions match English text. Lexical search can't bridge different wording, though: "where is DarGlobal located?" missed the FAQ that says "headquartered in London". So a small multilingual embedding model (`paraphrase-multilingual-MiniLM-L12-v2`, ONNX via fastembed, no PyTorch, baked into the image) adds semantic matches.
-  - **Reserved slots, not one fused ranking.** Measured on `scripts/eval.py`: fusing the dense list into RRF at any weight lowered hit@1 from 0.89 to 0.72 on name questions. Instead, lexical keeps the top 4 positions and the best semantic matches fill the last 2 of the 6 chunks the LLM reads. Result: hit@1 unchanged (0.89), answer-in-context (ctx@6) 0.89 → **1.00**, including the Arabic paraphrase.
-  - **Brand spellings are normalised for the model** ("dar global", "دار جلوبال" → "DarGlobal"): measured, the FAQ ranked #22 / #346 before and #1 after.
-  - **Precomputed and cached.** Vectors are stored per chunk-text hash in `data/raw/embeddings.npz` (int8, 6 MB), so the Space starts in seconds and a refresh embeds only new chunks. Without the model, retrieval falls back to lexical-only.
-- **Structured data for structured questions.** Listing questions go through deterministic filters over the scraped listings. The model can then only quote a price that exists in the data. When nothing matches exactly, the filters are relaxed step by step and the answer says so.
-- **Precomputed summaries for "aggregate" questions.** Plain RAG struggles with questions like "which projects are in Oman?" or "median villa price in Riyadh?", because the answer is spread over many pages. A portfolio overview (projects grouped by country) and a market snapshot (median, range, price per sqm by city and type) are generated at build time and retrieved for these questions.
-- **Free-tier engineering.** OpenRouter's free models rotate, and the free tier allows few requests per day. The app ranks the current free models, sends 3 at a time in OpenRouter's `models` fallback array, and ends with the `openrouter/free` router. It makes one LLM call per message, caches answers for an hour, and rate-limits each IP.
-- **Safety and privacy.** Retrieved text is marked as data in the prompt, so instructions inside a scraped page are ignored. Listing pages are stored only as structured records. Broker names and phone numbers are not kept.
+## Testing
 
-## Run it locally
+```bash
+pytest -q                 # 84 tests
+python scripts/eval.py    # retrieval check on 21 labelled questions (EN + AR)
+```
+
+Unit tests cover the parsers (with fixtures from real pages), the crawler against a local
+test site (robots.txt, sitemaps, bot challenges), retrieval, the listing query parser,
+model fallback, the chat pipeline and the background refresh. They run without network
+access or an API key.
+
+`scripts/eval.py` checks whether a page that answers each question is retrieved:
+
+| | hit@1 | hit@3 | answer in the 6 sources the model reads |
+|---|---|---|---|
+| Current | 0.95 | 1.00 | 1.00 |
+
+The question set is small (21), so treat it as a regression check, not a benchmark.
+Paraphrases like "where is DarGlobal located?" (the page says "headquartered in London") were
+the reason for adding semantic search; they are now also covered by intent keywords, so with
+or without embeddings the score on this set is the same.
+
+I also ran 84 questions in three rounds against the running app and read every answer:
+general knowledge, small talk, DarGlobal facts, listing searches, Arabic, typos, multi-turn
+conversations and prompt-injection attempts. Problems found this way (a currency word matched
+as a district name, a project missing from comparisons, follow-ups losing their filters,
+implausible prices) each have a test now.
+
+## Run it
 
 ```bash
 pip install -r requirements-dev.txt
-cp .env.example .env              # add your OPENROUTER_API_KEY (free at openrouter.ai/keys)
-
-python -m scraper.run             # ~10-20 min; writes data/raw/ (pages.jsonl, projects.json, listings.json)
-uvicorn app.main:app --port 7860 --env-file .env  # open http://localhost:7860
+cp .env.example .env                                 # set OPENROUTER_API_KEY
+uvicorn app.main:app --port 7860 --env-file .env     # http://localhost:7860
 ```
 
-With Docker:
+Docker:
 
 ```bash
 docker build -t dar-assistant .
 docker run --rm -p 7860:7860 --env-file .env dar-assistant
 ```
 
-If `data/raw/` is empty, the app falls back to a small bundled seed snapshot in `data/seed/` so it always starts.
+Without an API key the app runs in retrieval-only mode. Without `data/raw/` it falls back to
+the small snapshot in `data/seed/`.
 
-### Scraper options
+Re-scrape:
 
 ```bash
-python -m scraper.run --sites darglobal            # one site only (other sites' data is kept)
-python -m scraper.run --max-listings 800 --delay 1  # more listings, slower crawl
-python -m scraper.run --render                     # Playwright fallback for JS-only pages
+python -m scraper.run --render                           # all sites, 1 to 2 hours
+python -m scraper.run --sites wasalt blog --max-listings 3000
 ```
 
-## Deploy (Hugging Face Spaces, free)
+`--render` needs `pip install playwright && playwright install chromium`. The container
+re-scrapes Wasalt every 24 hours. It has no browser, so DarGlobal keeps the shipped data.
 
-1. Create a new **Space** → SDK **Docker** → Blank → hardware **CPU basic (free)** → Public.
-2. In **Settings → Variables and secrets** add:
-   - secret `OPENROUTER_API_KEY`
-   - secret `ADMIN_TOKEN` (optional, enables `POST /api/admin/refresh`)
-   - variable `APP_URL` = `https://<user>-<space>.hf.space`
-3. Push this repository (including `data/raw/`) to the Space (username + a *write* access token as password):
-   ```bash
-   git remote add space https://huggingface.co/spaces/<user>/<space>
-   git push --force space main      # replaces the Space's placeholder README
-   ```
-4. The image builds in a few minutes. The app is then served at `https://<user>-<space>.hf.space`.
+## Deploy to Hugging Face Spaces
+
+1. Create a Space with the Docker SDK (blank template).
+2. Add the secret `OPENROUTER_API_KEY` and the variable `APP_URL` (the Space URL).
+3. Push this repository to the Space. `*.npz` and `*.png` are stored with Git LFS.
 
 ## API
 
-| Method | Path | Purpose |
+| Method | Path | |
 |---|---|---|
-| `POST` | `/api/chat` | Chat as a Server-Sent Events stream (`meta` → `delta`… → `done`) |
-| `POST` | `/api/chat/sync` | Same, as one JSON response (`answer`, `sources`, `listings`, `model`) |
-| `GET` | `/api/health` | Dataset stats, model candidates, refresh status |
-| `GET` | `/api/search?q=` | Inspect retrieval results (explainability) |
-| `GET` | `/api/listings/search?q=` | Natural-language → structured listing search |
-| `GET` | `/api/projects` | Structured DarGlobal project records |
-| `POST` | `/api/admin/refresh` | Trigger a re-scrape (header `X-Admin-Token`) |
+| POST | `/api/chat` | Chat, streamed as server-sent events |
+| POST | `/api/chat/sync` | Same, as one JSON response |
+| GET | `/api/health` | Data counts, model candidates, refresh status |
+| GET | `/api/search?q=` | Retrieval results for a query |
+| GET | `/api/listings/search?q=` | Natural-language listing search |
+| GET | `/api/projects` | DarGlobal project records |
+| POST | `/api/admin/refresh` | Start a re-scrape (needs `ADMIN_TOKEN`) |
 
 ```bash
-curl -s -X POST https://<space-url>/api/chat/sync -H 'Content-Type: application/json' \
-     -d '{"message":"Show me villas for sale in Riyadh under 2 million SAR"}'
+curl -s -X POST https://anfashassan-dar-assistant.hf.space/api/chat/sync \
+     -H 'Content-Type: application/json' -d '{"message":"Villas in Riyadh under 2M"}'
 ```
 
 ## Configuration
 
 | Variable | Default | |
 |---|---|---|
-| `OPENROUTER_API_KEY` | – | required for generated answers (otherwise retrieval-only mode) |
-| `OPENROUTER_MODELS` | auto | comma-separated model IDs to pin instead of auto-discovery |
-| `REFRESH_INTERVAL_H` | `24` | background re-scrape interval; `0` disables |
-| `ADMIN_TOKEN` | – | enables the manual refresh endpoint |
-| `TOP_K` / `MAX_LISTINGS` | `6` / `6` | context size |
-| `RATE_LIMIT_PER_MIN` | `12` | per-IP message limit |
+| `OPENROUTER_API_KEY` | | required for generated answers |
+| `OPENROUTER_MODELS` | auto | comma-separated model IDs instead of auto-discovery |
+| `EMBEDDINGS` | `1` | `0` turns semantic search off |
+| `REFRESH_INTERVAL_H` | `24` | background re-scrape interval, `0` to disable |
+| `ADMIN_TOKEN` | | enables `/api/admin/refresh` |
+| `TOP_K` / `MAX_LISTINGS` | `6` / `6` | sources and listings per answer |
+| `MAX_TOKENS` | `1500` | answer length limit |
+| `RATE_LIMIT_PER_MIN` | `12` | messages per minute per IP |
 | `CACHE_TTL_S` | `3600` | answer cache lifetime |
-
-## Quality checks
-
-```bash
-pytest -q                 # 63 tests: parsers (incl. live-page layouts), crawler (local test site,
-                          # bot-challenge handling), retrieval (lexical + semantic slots), query parser,
-                          # LLM fallback logic, chat pipeline, cache, rate limit, refresher
-python scripts/eval.py    # retrieval hit@k / MRR on a labelled EN/AR question set
-python scripts/eval.py --live https://<space-url>   # end-to-end answers from the deployment
-```
-
-CI (GitHub Actions) runs the tests, builds the image and smoke-tests the container.
 
 ## Project layout
 
 ```
-app/        FastAPI app: knowledge base, retrieval, listing filter, prompts, OpenRouter client, refresher, UI
-scraper/    polite crawler, generic HTML extraction, DarGlobal + Wasalt parsers, CLI
-data/raw    scraped snapshot shipped in the image      data/seed   small fallback snapshot
-tests/      unit + integration tests                   scripts/    evaluation
+app/        FastAPI app: knowledge base, retrieval, embeddings, listing search, prompts,
+            OpenRouter client, chat pipeline, refresh job, static UI
+scraper/    crawler, HTML extraction, DarGlobal and Wasalt parsers
+data/raw    scraped snapshot (shipped in the image)
+data/seed   small fallback snapshot
+tests/      unit and integration tests
+scripts/    eval.py
 ```
 
-## Limitations and next steps
+## Limitations
 
-- Listing prices reflect the time of the scrape. Answers say so, and the scheduled refresh keeps the data reasonably current.
-- Possible next steps:
-  - a larger embedding model (the current one reads ~128 tokens per chunk) or a cross-encoder re-ranker;
-  - scrape the Arabic versions of both sites;
-  - persist refreshed data to a Hugging Face Dataset so it survives restarts;
-  - add an LLM-based query rewriter once a paid tier is available.
+- Listing prices are from the scrape date. The 24-hour refresh updates Wasalt only.
+- Free models take 3 to 15 seconds per answer and are rate-limited by OpenRouter.
+- The embedding model reads only the first ~128 tokens of each chunk.
+- Only the English versions of both sites were scraped.
 
-Data comes from publicly available pages and is used for this technical assessment only.
+Data comes from public pages and is used for this assessment only.

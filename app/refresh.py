@@ -79,9 +79,7 @@ class Refresher:
                 if self.work_dir.exists():
                     shutil.rmtree(self.work_dir)
                 out_dir.mkdir(parents=True)
-                # start from the current dataset: the scraper keeps a site's previous data
-                # when that site fails (e.g. DarGlobal's bot protection without a browser)
-                # and merges listings/projects, so a refresh can only add or update
+                # start from current data: failed sites keep theirs, records only merge
                 current_raw = self.data_dir / "raw"
                 for name in ("pages.jsonl", "projects.json", "listings.json", "embeddings.npz"):
                     if (current_raw / name).exists():

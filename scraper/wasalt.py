@@ -24,8 +24,7 @@ SEEDS = [
     "/en", "/en/s/wasalt-business", "/en/corporate", "/en/about",
     "/en/sale", "/en/rent", "/en/projects", "/en/daily-rentals", "/en/auction",
 ]
-# Listed in https://wasalt.sa/robots.txt (Nov 2026). Used as a fallback when robots.txt
-# can't be read, so one network blip doesn't leave the run with zero listings.
+# from robots.txt; used if robots.txt can't be fetched
 SITEMAPS = [
     "https://cdn.wasalt.sa/sitemap/product_sitemap_en_sa.xml.gz",
     "https://cdn.wasalt.sa/sitemap/static_sitemap_en_sa.xml.gz",
@@ -46,13 +45,10 @@ def is_property_url(url: str) -> bool:
     return path.startswith("/en/property/") and re.search(r"-\d{4,}$", path) is not None
 
 
-# Wasalt spells some cities differently on different pages; normalise so the market
-# summary doesn't split one city in two ("Aldammam" vs "Dammam").
 CITY_CANON = {"aldammam": "Dammam", "al dammam": "Dammam", "dammam": "Dammam",
               "khobar": "Al Khobar", "alkhobar": "Al Khobar", "al khobar": "Al Khobar",
               "almadinah": "Madinah", "al madinah": "Madinah", "madina": "Madinah",
               "medina": "Madinah", "makkah": "Makkah", "mecca": "Makkah", "alkharj": "Al Kharj",
-              # machine transliterations seen on live listings (Nov 2026)
               "makkah al mukarramah": "Makkah", "bariduh": "Buraydah", "alttayif": "Taif",
               "tbwk": "Tabuk", "eanizah": "Unaizah", "alzahran": "Dhahran", "hayil": "Hail",
               "earear": "Arar", "aljumum": "Al Jumum", "almuzahimih": "Al Muzahimiyah",
@@ -65,7 +61,7 @@ def canon_city(city: str) -> str:
 
 
 def spread_sample(urls: list[str], n: int) -> list[str]:
-    """Pick `n` URLs evenly spaced across the list (keeps order, no randomness)."""
+    """`n` evenly spaced items, in order."""
     if n <= 0 or len(urls) <= n:
         return list(urls)
     step = len(urls) / n
@@ -127,8 +123,7 @@ def parse_listing(page: dict) -> dict | None:
     if m:
         rec["id"] = m.group(1)
 
-    # the URL is authoritative: every page carries a site header "Properties for Sale in
-    # Saudi Arabia", so a text match alone would turn rentals into sales
+    # trust the URL: every page header says "Properties for Sale"
     rec["purpose"] = purpose_from_url(url)
     if not rec["purpose"]:
         has_sale = re.search(r"\bfor sale\b", text, re.I)
@@ -153,8 +148,7 @@ def parse_listing(page: dict) -> dict | None:
         re.search(r"\n\s*([\d]{1,3}(?:,\d{3})+)\s*\n\s*SAR", text)
     rec["price_sar"] = _num(m.group(1)) if m else None
     if rec["purpose"] == "rent":
-        # live pages put the period on its own line under the price ("38,000\n/Year");
-        # "Rent now pay later  3,451 */Month*" lines must not win, so prefer that form
+        # the period sits on its own line under the price: "38,000\n/Year"
         m = re.search(r"^\s*/\s*(year|month|week|day)\b", text, re.I | re.M) or \
             re.search(r"\b(yearly|annually|monthly|weekly|daily|per year|per month)\b", text, re.I)
         if m:

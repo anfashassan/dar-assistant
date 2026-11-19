@@ -25,8 +25,7 @@ SEEDS = [
     "/partners/mouawad", "/partners/pagani", "/partners/the-trump-organization",
     "/partners/w-hotels", "/partners/paramount",
 ]
-# Project paths observed on /projects (Nov 2026). The crawler also discovers new ones
-# from the live /projects page, so this list is only a safety net.
+# fallback list; new projects are also discovered from /projects
 KNOWN_PROJECT_PATHS = [
     "/trump-international-hotel-and-tower-dubai", "/d-villas-at-jge", "/the-astera", "/dg1",
     "/davinci-tower-by-pagani", "/urban-oasis-by-missoni", "/w-residences",
@@ -48,8 +47,6 @@ NON_PROJECT_PREFIXES = ("/press", "/blog", "/partners", "/privacy", "/terms", "/
                         "/projects", "/ar", "/fr", "/ru", "/zh", "/de", "/es", "/it",
                         "/faq", "/get-in-touch", "/insights", "/pay-online", "/careers",
                         "/media", "/news", "/events", "/sitemap", "/search")
-# section index pages that live next to project pages ("/one-of-one" lists the
-# one-of-one projects but isn't one itself)
 NON_PROJECT_PATHS = {"/one-of-one", "/trump-plaza", "/rayana", "/amaya", "/play-project",
                      "/lp", "/landing-page", "/landing-page/aida"}
 
@@ -135,7 +132,7 @@ def parse_specs(text: str) -> dict[str, str]:
 
 
 def is_valid_project(rec: dict) -> bool:
-    """A record is worth keeping only if it has a name and at least some real content."""
+    """Needs a name and at least one real field."""
     content_fields = ("location", "property_type", "unit_types", "completion", "area_sqm",
                       "description", "starting_price", "floors", "faqs")
     return bool(rec.get("name")) and any(rec.get(f) for f in content_fields)
@@ -146,8 +143,7 @@ def parse_project(page: dict) -> dict:
     text = page.get("text", "")
     name = (page.get("h1") or page.get("title") or "").strip()
     name = re.split(r"\s+[|–-]\s+(DarGlobal|Dar Global)", name, flags=re.I)[0].strip()
-    # some pages use a tagline as H1 ("The place to be"); if it shares no word with the
-    # URL slug, the <title> ("Trump Mansions") is the better name
+    # H1 is sometimes a tagline ("The place to be"); prefer the <title> then
     title = re.split(r"\s+[|–]\s+", page.get("title") or "")[0].strip()
     slug_words = set(re.findall(r"[a-z0-9]+", urlparse(page["url"]).path.lower())) - {"the", "by", "at", "of"}
     if title and title != name and not slug_words & set(re.findall(r"[a-z0-9]+", name.lower())):
@@ -171,8 +167,6 @@ def parse_project(page: dict) -> dict:
         "name": name,
         "url": page["url"],
         "location": location,
-        # location is the most specific signal; fall back to the wider text only if it's silent
-        # (a combined blob let a passing "Dubai" mention beat "AIDA" -> Oman)
         "country": (infer_country(location) or infer_country(name)
                     or infer_country(page.get("description", ""), text[:600])),
         "property_type": specs.get("property_type", ""),

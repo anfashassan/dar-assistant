@@ -24,9 +24,7 @@ SUMMARY_CHARS = 2400  # max size of a generated summary chunk; prompts.py never 
 SITE_LABEL = {"darglobal": "DarGlobal", "wasalt": "Wasalt"}
 
 
-# Sanity bounds for listing prices. Live Wasalt data has a few impossible values: land "for
-# sale" at SAR 1,100-9,375 (the per-m2 price shown as the total) and "rentals" of SAR 3M-1.9B
-# (sale prices / typos). They would win "cheapest land" questions and skew the medians.
+# Some Wasalt listings show the per-m2 price as the total, or a sale price as rent.
 SALE_MIN, SALE_MAX = 50_000, 500_000_000
 RENT_MIN, RENT_MAX = 500, 2_000_000   # per period; daily/monthly rents sit well inside this
 
@@ -181,8 +179,7 @@ def portfolio_summary(projects: list[dict]) -> list[Chunk]:
     out = [Chunk(id="", text=part if i == 0 else "DarGlobal project portfolio overview (continued)\n" + part,
                  title="DarGlobal project portfolio overview", url="https://darglobal.co.uk/projects",
                  site="darglobal", kind="summary") for i, part in enumerate(pack(text, SUMMARY_CHARS))]
-    # one focused chunk per country: "projects in Oman?" gets exactly the 13 Oman projects
-    # (with the full overview a free model once listed Saudi and Spanish projects under Oman)
+    # one chunk per country, so country questions get a complete, unmixed list
     for country, items in by_country.items():
         body = [f"DarGlobal projects in {country}: {len(items)} projects listed on darglobal.co.uk/projects "
                 f"(complete list; DarGlobal has no other projects in {country}):"]

@@ -144,9 +144,7 @@ class OpenRouterClient:
                         produced = produced or ev["type"] == "delta"
                         yield ev
                 except httpx.HTTPError as e:
-                    # network-level failures (connect/read timeout, dropped connection) get
-                    # the same handling as HTTP errors: next batch, then the caller's
-                    # retrieval-only fallback - never a raw "Internal error" in the UI
+                    # treat timeouts / dropped connections like HTTP errors
                     raise LLMError(f"network error: {e.__class__.__name__}: {e}") from e
                 return
             except LLMError as e:
@@ -170,7 +168,7 @@ class OpenRouterClient:
         }
         if len(models) > 1:
             body["models"] = models
-        used_model = models[0]
+        used_model, finish = models[0], None
         async with self._client.stream("POST", "/chat/completions", json=body) as r:
             if r.status_code != 200:
                 text = (await r.aread()).decode("utf-8", "replace")[:300]
@@ -199,6 +197,8 @@ class OpenRouterClient:
                         yield {"type": "delta", "text": delta}
                     if choice.get("finish_reason") == "error":
                         raise LLMError("provider error during generation")
+                    finish = choice.get("finish_reason") or finish
             if not got_text:
                 raise LLMError("empty completion")
-        yield {"type": "done", "model": used_model}
+        # "length" = hit max_tokens; None = stream ended without saying why
+        yield {"type": "done", "model": used_model, "finish": finish}

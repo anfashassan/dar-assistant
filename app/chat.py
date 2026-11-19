@@ -42,8 +42,7 @@ DARGLOBAL_HINT = re.compile(r"dar ?global|trump|aida|neptune|mouawad|fendi|misso
                             r"lamborghini|amaya|rayana|astera|marea|tierra viva|les vagues|mulliner|دار جلوبال|ترامب", re.I)
 
 
-# Whole-message small talk / questions about the assistant itself. Answered conversationally
-# without retrieval (otherwise "who are you?" pulls random pages and gets cited answers).
+# answered without retrieval
 SMALLTALK = re.compile(
     r"(hi|hello|hey|hiya|yo|salam|salaam|good (morning|afternoon|evening|night)|"
     r"thanks?|thank you( so much)?|thx|ok(ay)?|cool|great|nice|awesome|perfect|bye|goodbye|see you|"
@@ -148,7 +147,6 @@ class ChatService:
     def _index_district_city(self):
         self.districts = sorted({l["district"] for l in self.kb.listings if l.get("district")})
         self.cities = sorted({l["city"] for l in self.kb.listings if l.get("city")})
-        # project entity index: "The Astera, Interiors by Aston Martin" -> key "astera"
         cards = {c.url: c for c in self.kb.chunks if c.kind == "project_card"}
         self.project_keys: list[tuple[re.Pattern, Chunk]] = []
         for p in self.kb.projects:
@@ -175,8 +173,7 @@ class ChatService:
             lq = base.merged_with(lq)
         if lq.purpose is None and PRICE_Q.search(question):
             lq.purpose = "sale"   # "how much is a villa?" means buying; rents are asked for explicitly
-        # "...in the same city": take the city from a project discussed earlier (Neptune -> Riyadh),
-        # but only when this message actually asks to search (not "how many bedrooms do they have?")
+        # "same city" -> city of a project mentioned earlier, only if the user is searching
         own = parse_query(question, self.districts, self.cities)
         wants_search = bool(own.purpose or own.price_max or own.price_min or SAME_PLACE.search(question))
         if not lq.city and is_followup and wants_search:
@@ -195,9 +192,7 @@ class ChatService:
             lq = own   # "how many bedrooms do the villas have?" asks about the project, not a new search
         if self.kb.listings and lq.intent and lq.concrete() and not about_darglobal:
             listings = search_listings(self.kb.listings, lq, limit=self.s.max_listings_in_context)
-            # listing cards are shown separately; drop duplicate listing chunks from documents
-            # the structured search is authoritative for listings: drop listing chunks
-            # (which may violate the filters) and keep only a few supporting documents
+            # listing cards come from the structured search; keep a few supporting docs
             chunks = [(c, s) for c, s in chunks if c.kind != "listing"][:4]
         return Retrieved(chunks=chunks, listings=listings, search_query=search_query)
 
@@ -208,8 +203,7 @@ class ChatService:
     def _add_summaries(self, question: str, chunks, context: str = ""):
         extra = []
         nq = normalize(question)
-        # named projects always reach the model ("Compare The Astera and Urban Oasis" used to
-        # retrieve only Urban Oasis pages and claim The Astera didn't exist)
+        # always include projects the user names
         named = [card for pat, card in self.project_keys if pat.search(nq)]
         if not named and context and context != question:   # follow-up: projects named earlier
             named = [card for pat, card in self.project_keys if pat.search(normalize(context))]
@@ -224,7 +218,7 @@ class ChatService:
             extra += [c for c in self.kb.chunks if c.kind == "summary" and c.site == "wasalt"]
         extra = list({c.id: c for c in extra}.values())
         ids = {c.id for c in extra}
-        # per-country portfolio chunks are injected deliberately (above), never via plain search
+        # country chunks are only added on purpose (above)
         chunks = [(c, s) for c, s in chunks if not c.meta.get("country")]
         merged = [(c, 1.0) for c in extra] + [(c, s) for c, s in chunks if c.id not in ids]
         return merged[: self.s.top_k + 2]
@@ -285,10 +279,16 @@ class ChatService:
                     yield ev
                 elif ev["type"] == "done":
                     text = "".join(parts)
-                    if key and len(text) > 40:
+                    complete = ev.get("finish") == "stop"
+                    if not complete:
+                        log.warning("answer not finished (finish_reason=%s)", ev.get("finish"))
+                        yield {"type": "delta", "text": "\n\n_" + (
+                            "الإجابة لم تكتمل، اضغط إعادة التوليد." if detect_lang(question) == "ar"
+                            else "The answer was cut short. Tap regenerate to try again.") + "_"}
+                    elif key and len(text) > 40:
                         self.cache.set(key, {"text": text, "model": ev["model"]})
                     yield {"type": "done", "model": ev["model"], "cached": False,
-                           "latency_ms": int((time.time() - t0) * 1000)}
+                           "latency_ms": int((time.time() - t0) * 1000), "truncated": not complete}
             return
         except LLMError as e:
             log.warning("LLM unavailable: %s", e)

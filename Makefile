@@ -7,7 +7,7 @@ scrape:         ## scrape DarGlobal + Wasalt into data/raw (takes ~10-20 min, po
 	python -m scraper.run
 
 run:            ## run the app locally on :7860
-	uvicorn app.main:app --reload --port 7860
+	uvicorn app.main:app --reload --port 7860 --env-file .env
 
 test:
 	pytest -q

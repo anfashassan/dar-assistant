@@ -1,15 +1,8 @@
-"""Dense (semantic) embeddings: the third ranked list in hybrid retrieval.
+"""Multilingual sentence embeddings (fastembed / ONNX, CPU only).
 
-Lexical search matches words, so "where is DarGlobal located?" misses a page that says
-"DarGlobal is headquartered in London". A small multilingual sentence-embedding model
-matches on meaning instead, and also maps Arabic questions onto English text.
-
-Design
-- fastembed + ONNX Runtime: CPU-only, no PyTorch, ~220 MB model baked into the image.
-- Vectors are cached by chunk-text hash in `embeddings.npz` next to the data, so startup
-  and refreshes only embed new/changed chunks. The shipped snapshot comes pre-embedded.
-- Optional: if fastembed or the model is unavailable, `get_embedder()` returns None and
-  retrieval quietly runs lexical-only (the app never fails to start because of this).
+Vectors are cached by chunk-text hash in `embeddings.npz`, so startup and refreshes only
+embed new chunks. If the model is unavailable, `get_embedder()` returns None and
+retrieval runs lexical-only.
 """
 from __future__ import annotations
 
@@ -104,8 +97,7 @@ class VectorCache:
         if not keys:
             return
         mat = np.stack([self.vectors[k] for k in keys]).astype(np.float32)
-        # int8 with a per-row scale: 4x smaller than float32 (keeps the shipped file under
-        # Hugging Face's 10 MB non-LFS limit); cosine ranking is unaffected in practice
+        # int8 + per-row scale: 4x smaller, ranking unchanged
         scales = np.maximum(np.abs(mat).max(axis=1), 1e-12)
         q = np.round(mat / scales[:, None] * 127.0).astype(np.int8)
         tmp = path.with_name(path.name + ".tmp.npz")
@@ -125,5 +117,5 @@ class VectorCache:
 
 
 def chunk_text_for_embedding(title: str, text: str) -> str:
-    # the model reads ~128 tokens: lead with the title/heading path, which carries the topic
+    # the model only reads ~128 tokens, so the title goes first
     return f"{title}\n{text}"[:1200]

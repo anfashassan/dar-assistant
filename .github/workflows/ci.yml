@@ -14,6 +14,7 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+        with: { lfs: true }   # data/raw/embeddings.npz
       - run: docker build -t dar-assistant .
       - name: smoke test
         run: |

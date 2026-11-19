@@ -38,8 +38,7 @@ class FakeEmbedder:
 
 
 def _chunks():
-    # like the live data: many chunks mention DarGlobal, so the name alone can't pick the
-    # answer; only the meaning ("located" ~ "headquartered") can
+    # every chunk mentions DarGlobal; only "located" ~ "headquartered" separates them
     filler = [Chunk(f"f{i}", f"DarGlobal news {i}: DarGlobal launches apartments with balcony", f"DarGlobal news {i}",
                     f"https://x/{i}", "wasalt", "listing") for i in range(30)]
     hq = Chunk("hq", "DarGlobal is headquartered in London and operates in 9 countries.",

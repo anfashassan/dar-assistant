@@ -99,8 +99,7 @@ def test_wasalt_live_layout_rent_listing():
 
 
 def test_rent_url_wins_over_site_header():
-    # every live page starts with "Properties for Sale in Saudi Arabia"; a rental used to
-    # be stored as a sale, so a yearly rent of SAR 23,000 looked like a sale price
+    # every page header says "Properties for Sale in Saudi Arabia"
     url = "https://wasalt.sa/en/property/rent/apartment-70-sqm-with-2-bedrooms-5943629"
     text = "Properties for Sale in Saudi Arabia - wasalt.com\n\nFor Rent\n\n23,000\n\n/Year\n\nPrice: 23000 SAR"
     l = parse_listing({"url": url, "text": text, "title": "Apartment 70 SQM with 2 Bedrooms"})
@@ -141,7 +140,6 @@ def test_bot_challenge_pages_detected():
 
 
 def test_empty_project_records_rejected():
-    # a challenge page parsed as a "project" used to yield a record with no name or specs
     url = "https://darglobal.co.uk/trump-tower-jeddah"
     blank = parse_project(parse_html((FX / "incapsula_challenge.html").read_text(), url))
     assert not is_valid_project(blank)
@@ -151,11 +149,11 @@ def test_empty_project_records_rejected():
 
 
 def test_live_project_layout_fixes():
-    # value wrapped onto a second line (live Trump Tower Jeddah page)
+    # value wrapped onto a second line
     specs = parse_specs("- Unit Type 1, 2, 3, 4 Bedroom Apartments &\n 3, 4 Bedroom Penthouses\n- Location Jeddah")
     assert specs["unit_type"] == "1, 2, 3, 4 Bedroom Apartments & 3, 4 Bedroom Penthouses"
     assert specs["location"] == "Jeddah"
-    # tagline H1 -> fall back to <title> (live Trump Mansions page)
+    # tagline H1 -> use the <title>
     p = parse_project({"url": "https://darglobal.co.uk/rayana/trump-mansions", "title": "Trump Mansions",
                        "h1": "The place to be", "text": "# The place to be\n\nLocation\n\nRayana, Wadi Safar"})
     assert p["name"] == "Trump Mansions"
@@ -173,7 +171,7 @@ def test_faq_heading_is_not_a_location_and_location_decides_country():
     p = parse_project({"url": "https://darglobal.co.uk/x", "h1": "X",
                        "text": "# X\n\nMuscat | Oman\n\nInvestors from Dubai and Riyadh love it."})
     assert p["location"] == "Muscat | Oman" and p["country"] == "Oman"
-    # live Les Vagues page: a bare "Location" heading right before the FAQ heading
+    # empty "Location" heading followed by the FAQ heading
     p = parse_project({"url": "https://darglobal.co.uk/les-vagues", "h1": "Les Vagues by Elie Saab",
                        "text": "# Les Vagues by Elie Saab\n\nDoha | Qatar\n\n- Property Type Branded Residential Complex"
                                "\n\n## Location\n\n## Frequently Asked Questions\n\nWhat is it?"})

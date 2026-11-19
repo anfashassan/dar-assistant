@@ -14,9 +14,10 @@ from app.refresh import Refresher
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 
-def sse(*texts, model="m/a:free"):
+def sse(*texts, model="m/a:free", finish="stop"):
     lines = [": OPENROUTER PROCESSING"]
     lines += ["data: " + json.dumps({"model": model, "choices": [{"delta": {"content": t}}]}) for t in texts]
+    lines += ["data: " + json.dumps({"model": model, "choices": [{"delta": {}, "finish_reason": finish}]})]
     return lines + ["data: [DONE]"]
 
 
@@ -100,7 +101,7 @@ def test_stream_success_and_models_array():
     asyncio.run(c.refresh_models())
     evs = asyncio.run(collect(c.stream_chat([{"role": "user", "content": "hi"}])))
     assert "".join(e["text"] for e in evs if e["type"] == "delta") == "Hello world"
-    assert evs[-1] == {"type": "done", "model": "m/a:free"}
+    assert evs[-1] == {"type": "done", "model": "m/a:free", "finish": "stop"}
     body = c._client.calls[0]
     assert body["stream"] and body["models"][0] == body["model"]
 
@@ -122,7 +123,7 @@ def test_network_error_tries_next_batch():
 
 
 def test_network_outage_degrades_to_retrieval_only(kb):
-    """Seen live: httpx.ConnectTimeout used to escape as 'Internal error: ConnectTimeout'."""
+    """Network errors end in the retrieval-only answer, not an exception."""
     import httpx
     llm = make_client([httpx.ConnectTimeout("x"), httpx.ReadTimeout("y"), httpx.ConnectError("z")], MODELS)
     asyncio.run(llm.refresh_models())
@@ -225,7 +226,6 @@ def test_aggregate_question_pulls_portfolio_summary(kb):
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
     r = svc.retrieve("Which DarGlobal projects are in Oman?", [])
     assert r.chunks[0][0].kind == "summary"
-    # natural phrasings that used to miss the summary (answer named 1 of 8 Saudi projects)
     for q in ("What DarGlobal projects are there in Saudi Arabia?", "Tell me about the projects in Dubai"):
         assert svc.retrieve(q, []).chunks[0][0].kind == "summary", q
     # a single-project question doesn't need the portfolio overview
@@ -306,14 +306,12 @@ def test_regenerate_bypasses_cache(kb):
 
 
 def test_named_projects_always_reach_the_model(kb):
-    """Live failure: 'Compare The Astera and Urban Oasis' retrieved only Urban Oasis pages."""
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
     titles = [c.title for c, _ in svc.retrieve("Compare The Astera and Urban Oasis by Missoni", []).chunks]
     assert any("Astera" in t for t in titles) and any("Urban Oasis" in t for t in titles)
 
 
 def test_country_question_gets_focused_portfolio(kb):
-    """Live failure: the Arabic Oman question listed Saudi/Spanish projects under Oman."""
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
     for q in ("Which DarGlobal projects are in Oman?", "ما هي مشاريع دار جلوبال في عمان؟"):
         first = svc.retrieve(q, []).chunks[0][0]
@@ -330,7 +328,6 @@ def test_listing_search_needs_a_real_filter(kb):
 
 
 def test_followup_remembers_two_turns_back(kb):
-    """Live failure: 'only the newest ones' (3rd turn) lost the Jeddah villa filters."""
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
     hist = [{"role": "user", "content": "Show me villas for sale in Riyadh under 2 million"},
             {"role": "assistant", "content": "..."},
@@ -340,7 +337,7 @@ def test_followup_remembers_two_turns_back(kb):
 
 
 def test_followups_found_in_live_testing(kb):
-    """Round-2 QA: project follow-ups vs. search follow-ups."""
+    """Questions about a project vs. refinements of a listing search."""
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
     neptune = [{"role": "user", "content": "Tell me about Neptune by Mouawad"}, {"role": "assistant", "content": "..."}]
     r = svc.retrieve("How many bedrooms do the villas have?", neptune)
@@ -360,3 +357,15 @@ def test_price_questions_mean_buying(kb):
         r = svc.retrieve(q, [])
         assert r.listings.query.purpose == "sale" and any(c.kind == "summary" for c, _ in r.chunks), q
     assert svc.retrieve("How much is the rent for a villa in Riyadh?", []).listings.query.purpose == "rent"
+
+
+def test_cut_off_answer_is_flagged_and_not_cached(kb):
+    llm = make_client([FakeResp(200, sse("The tower has 47 floors and is east-facing on 1", finish="length")),
+                       FakeResp(200, sse("The tower has 47 floors."))], MODELS)
+    asyncio.run(llm.refresh_models())
+    svc = ChatService(Settings(), kb, llm)
+    text = lambda evs: "".join(e.get("text", "") for e in evs if e["type"] == "delta")
+    first = asyncio.run(collect(svc.answer("Tell me about Trump Tower Jeddah", [])))
+    assert first[-1]["truncated"] and "cut short" in text(first)
+    second = asyncio.run(collect(svc.answer("Tell me about Trump Tower Jeddah", [])))
+    assert text(second) == "The tower has 47 floors." and not second[-1]["truncated"]

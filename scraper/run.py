@@ -43,8 +43,7 @@ def has_content(page: dict | None) -> bool:
 # ----------------------------------------------------------------- sitemaps
 def sitemap_urls(sess: PoliteSession, base: str, limit: int = 5000,
                  fallback: list[str] | None = None) -> list[str]:
-    """Collect page URLs from sitemaps. `fallback` sitemaps are used only when robots.txt
-    lists none (e.g. it couldn't be fetched)."""
+    """Page URLs from sitemaps. `fallback` is used when robots.txt lists none."""
     roots = list(sess.sitemaps_from_robots(base) or fallback or [])
     roots += [urljoin(base, "/sitemap.xml"), urljoin(base, "/sitemap_index.xml")]
     seen_maps, out, queue = set(), [], deque(dict.fromkeys(roots))
@@ -85,8 +84,7 @@ class Crawler:
             return None
 
     def _start_browser(self) -> bool:
-        """Launch headless Chromium once. On failure, disable rendering for the whole run
-        (a half-started Playwright would make every later call fail with an asyncio error)."""
+        """Start Chromium once; if that fails, turn rendering off for the run."""
         ctx = None
         try:
             from playwright.sync_api import sync_playwright
@@ -173,7 +171,6 @@ class Crawler:
                 if not batch:
                     break
                 for url, page in zip(batch, pool.map(self.fetch_page, batch)):
-                    # JS-only page, or a host that serves bot challenges to plain HTTP
                     if (page and len(page["text"]) < 250) or (page is None and self.sess.challenged(url)):
                         page = self.render_page(url) or page
                     if not page:
@@ -187,8 +184,7 @@ class Crawler:
 
 
 def merge_records(old: list[dict], new: list[dict], key: str) -> list[dict]:
-    """Update `old` with `new` by `key` (new wins), keeping old records a partial or
-    smaller run didn't reach, so a refresh never shrinks the dataset."""
+    """Merge by `key`; new records win, old ones not seen this run are kept."""
     merged = {r.get(key) or r.get("url"): r for r in old}
     merged.update({r.get(key) or r.get("url"): r for r in new})
     return list(merged.values())
@@ -249,8 +245,7 @@ def scrape_wasalt(c: Crawler, max_pages: int, max_listings: int) -> tuple[list[d
     sm = [u for u in sitemap_urls(c.sess, base, limit=100000, fallback=wasalt.SITEMAPS)
           if wasalt.is_crawlable(u)]
     props = [u for u in sm if wasalt.is_property_url(u)]
-    # the listing sitemap is ordered newest-first; sample evenly so the dataset covers
-    # many cities / types / price bands instead of one recent batch
+    # the sitemap is newest-first; sample across it for variety
     seeds += wasalt.spread_sample(props, max_listings) + [u for u in sm if not wasalt.is_property_url(u)]
     pages = c.crawl(seeds, allow=wasalt.is_crawlable, max_pages=max_pages,
                     priority=wasalt.is_property_url, max_priority=max_listings)
@@ -347,10 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     # drop records from older runs that the current rules no longer treat as projects
     projects = [p for p in projects if darglobal.is_project_path(p.get("id", ""))]
 
-    # A site that returned nothing (blocked / offline) keeps its previous data instead
-    # of being wiped, so a failed run never makes the dataset worse.
-    # Fresh pages replace old copies of the same URL; old pages this run didn't reach are
-    # kept, so an interrupted crawl can only add/update pages, never lose them.
+    # merge by URL: a failed or partial run never removes data
     all_pages = []
     for g in ("darglobal", "wasalt", "blog"):
         prev = [p for p in old if group(p) == g]

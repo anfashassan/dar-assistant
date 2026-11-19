@@ -78,8 +78,7 @@ class ListingQuery:
         return d
 
     def concrete(self) -> bool:
-        """Enough to run a search: a place, a budget, a size, a bedroom count, or a type with
-        sale/rent. "What is Wasalt?" or "how many bedrooms do the villas have?" are not."""
+        """True if there is something to search on: place, budget, size, beds, or type + purpose."""
         return bool(self.city or self.district or self.price_max or self.price_min or self.area_min
                     or self.bedrooms_exact is not None or self.bedrooms_min is not None
                     or (self.property_type and self.purpose))
@@ -116,10 +115,8 @@ FUZZY_STOPWORDS = {"same", "some", "near", "nearby", "close", "best", "good", "n
 
 
 ARTICLE = re.compile(r"^(the|al|an|ar|as|ash|at|az|ad|adh|ath|ats|ال)[\s-]+")
-# district names made only of these words are too generic to fuzzy-match ("City Center")
 GENERIC_PLACE = {"city", "center", "centre", "central", "district", "north", "south", "east", "west",
                  "new", "old", "downtown", "the", "of", "area", "town", "village", "industrial"}
-# number words -> digits, so "three bedroom" / "بثلاث غرف" / "غرفتين" parse like "3 bedroom"
 NUM_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
              "nine": 9, "ten": 10, "single": 1, "double": 2}
 AR_NUM = [("غرفتين", "2 غرف"), ("غرفتان", "2 غرف"), ("غرفة واحدة", "1 غرف"), ("غرفه واحده", "1 غرف")]
@@ -188,8 +185,7 @@ def parse_query(text: str, known_districts: list[str] | None = None,
         if not hit and len(core) >= 5:  # fuzzy: "yasmin" ~ "yasmeen", "malqa" ~ "malga"
             n = len(core.split())
             grams = [" ".join(words[i:i + n]) for i in range(len(words) - n + 1)]
-            # short / common query words must not fuzzy-match a district: "sar" (the
-            # currency) used to match "Al Samer" on every price question
+            # e.g. "sar" must not match "Al Samer"
             hit = any(g[:2] == core[:2] and len(g) >= 4 and abs(len(g) - len(core)) <= 2
                       and g not in FUZZY_STOPWORDS
                       and SequenceMatcher(None, core, g).ratio() >= 0.75 for g in grams)
@@ -335,14 +331,11 @@ def search_listings(listings: list[dict], q: ListingQuery, limit: int = 6) -> Li
 
 
 def _diverse(found: list[dict], limit: int, spread: bool = False, per_district: int = 2) -> list[dict]:
-    """Pick `limit` results that show real choice: at most `per_district` per district and,
-    for budget questions, candidates spread across the whole price range instead of six
-    near-identical listings right at the ceiling (seen live: 6 x SAR 2.0M in one district)."""
+    """At most `per_district` per district; with `spread`, sample across the price range."""
     pool = found
     if spread and len(found) > limit * 3:
         step = len(found) / (limit * 3)
         sample = [found[int(i * step)] for i in range(limit * 3)]
-        # interleave so the first picks already span the range: top, middle, bottom, ...
         pool = sample[0::3] + sample[1::3] + sample[2::3]
         pool += [l for l in found if l not in pool]
     out, per = [], defaultdict(int)

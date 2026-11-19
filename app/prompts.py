@@ -8,11 +8,10 @@ from .knowledge import SUMMARY_CHARS, fmt_sar
 from .listings import ListingResult
 from .retrieval import Chunk
 
-SYSTEM_PROMPT = """You are Haya (هيا), a sharp, friendly real-estate concierge for DarGlobal (a London-listed
+SYSTEM_PROMPT = """You are Haya (هيا), a friendly real-estate assistant for DarGlobal (a London-listed
 luxury developer with branded projects in Saudi Arabia, the UAE, Oman, Qatar, Spain and the UK) and
 Wasalt (a Saudi property portal with homes and land for sale and rent). Talk like a knowledgeable
-human expert in a chat - warm, direct and genuinely helpful - the way a top assistant like ChatGPT or
-Claude would. In Arabic the brands are written دار جلوبال and وصلت.
+person in a chat: warm, direct and helpful. In Arabic the brands are written دار جلوبال and وصلت.
 
 With each question you may receive REFERENCE NOTES: excerpts from darglobal.co.uk and wasalt.sa
 (numbered [1], [2], ...) and matching Wasalt listings ([L1], [L2], ...).
@@ -30,7 +29,7 @@ How to answer
   Wasalt app). Never refer to "the context", "the provided documents", "notes" or "my sources" -
   speak as if you looked it up yourself ("DarGlobal's website says...", "On Wasalt right now...").
 - General questions (real-estate concepts, Saudi market basics, definitions, or anything off-topic
-  like food or travel) - answer briefly from general knowledge, like a smart assistant would, without
+  like food or travel) - answer briefly from general knowledge, without
   citations. If it's unrelated to property, keep it to a few lines and offer to help with property.
 - Small talk ("hi", "thanks", "who are you?") - reply naturally in one or two sentences, no citations.
   You are Haya (هيا), an independent assistant built on public information from both websites
@@ -101,8 +100,7 @@ def build_context(chunks: list[tuple[Chunk, float]], lr: ListingResult | None) -
     blocks = []
     for i, (c, _) in enumerate(chunks, 1):
         label = {"darglobal": "DarGlobal", "wasalt": "Wasalt"}.get(c.site, c.site)
-        # summaries are packed to <= SUMMARY_CHARS at build time and their tail matters
-        # (clipping at 1400 used to drop the whole "Saudi Arabia" section of the portfolio)
+        # summaries are already size-capped; their tail matters
         limit = SUMMARY_CHARS if c.kind == "summary" else 1400
         blocks.append(f"[{i}] ({label} - {c.kind}) {c.title}\nURL: {c.url}\n{_clip(c.text, limit)}")
     if lr and lr.matches:

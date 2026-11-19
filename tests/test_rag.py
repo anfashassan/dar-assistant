@@ -11,8 +11,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 
 @pytest.fixture(scope="module")
 def kb():
-    # pinned to the bundled seed snapshot so results don't change with each live scrape;
-    # retrieval quality on live data is measured by scripts/eval.py
+    # seed snapshot keeps these stable; scripts/eval.py measures the scraped data
     return KnowledgeBase.load(DATA, raw_dir=DATA / "seed")
 
 
@@ -32,7 +31,7 @@ def test_official_project_page_wins_near_tie():
 
 
 def test_summary_chunks_reach_prompt_in_full():
-    """The portfolio summary's last section (Saudi Arabia) used to be clipped away."""
+    """Summaries must not be clipped like ordinary chunks."""
     from app.knowledge import SUMMARY_CHARS
     from app.retrieval import Chunk
     text = ("Oman (13 projects):\n" + "- some project line here\n" * 80)[:SUMMARY_CHARS - 40] + "\nSaudi Arabia: Neptune"
@@ -99,8 +98,6 @@ def test_fuzzy_district():
 
 
 def test_currency_word_is_not_a_district():
-    # "SAR" used to fuzzy-match the live district "Al Samer" (ratio 0.75), silently
-    # filtering every price question to one district
     districts = ["Al Samer", "Al Yasmeen", "Al Sahafa", "Al Malqa"]
     q = parse_query("Show me villas for sale in Riyadh under 2 million SAR", districts)
     assert q.district is None and q.price_max == 2_000_000 and q.city == "Riyadh"
@@ -134,8 +131,7 @@ def test_chunking():
 
 
 def test_city_name_is_not_a_district():
-    # a few live listings carry "Riyadh" in the district field; that used to become a district
-    # filter, which matched nothing and forced "closest matches" on every Riyadh question
+    # some listings have "Riyadh" as their district
     q = parse_query("villas for sale in Riyadh under 2 million", ["Riyadh", "Al Narjis", "Al Malqa"])
     assert q.city == "Riyadh" and q.district is None
 
@@ -188,6 +184,6 @@ def test_more_district_traps_from_live_data():
 
 
 def test_property_word_is_not_a_district():
-    # a live Jeddah district is literally called "The Apartment"
+    # there is a Jeddah district called "The Apartment"
     q = parse_query("What's the median apartment price in Jeddah?", ["The Apartment", "Al Rayaan"])
     assert q.district is None and q.property_type == "Apartment" and q.city == "Jeddah"

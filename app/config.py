@@ -24,7 +24,7 @@ class Settings:
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("DATA_DIR", str(ROOT / "data"))))
     top_k: int = field(default_factory=lambda: int(os.getenv("TOP_K", "6")))
     max_listings_in_context: int = field(default_factory=lambda: int(os.getenv("MAX_LISTINGS", "6")))
-    max_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_TOKENS", "900")))
+    max_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_TOKENS", "1500")))
     temperature: float = field(default_factory=lambda: float(os.getenv("TEMPERATURE", "0.2")))
     history_turns: int = field(default_factory=lambda: int(os.getenv("HISTORY_TURNS", "6")))
 

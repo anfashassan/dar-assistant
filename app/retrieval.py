@@ -1,14 +1,8 @@
-"""Hybrid retrieval: BM25 (word level) + TF-IDF over character n-grams + dense
-multilingual embeddings, fused with Reciprocal Rank Fusion.
+"""Hybrid retrieval.
 
-Why this design
-- BM25 is strong on exact terms (project names, districts, brand partners).
-- Character n-grams are robust to typos, plurals, transliteration variants
-  ("Jeddah"/"Jedda", "Al Yasmeen"/"Al Yasmin") and to Arabic morphology.
-- Dense embeddings (app/embeddings.py) match on meaning: "where is it located?" finds
-  "headquartered in London", and Arabic questions reach English text.
-- RRF combines the lists without score calibration. The dense list is optional: without
-  it (no model available) retrieval runs lexical-only, exactly as before.
+BM25 handles exact names, character n-grams handle typos and transliterations
+(Yasmeen / Yasmin); both are fused with reciprocal rank fusion. Optional dense
+embeddings fill a few reserved result slots for paraphrased questions.
 """
 from __future__ import annotations
 
@@ -36,8 +30,7 @@ AR_STOP = set("""في من على إلى الى عن مع هذا هذه ذلك �
 كل بعض هو هي هم انا أنا نحن انت أنت لي لك عند""".split())
 
 
-# Arabic -> English glossary so Arabic questions retrieve English source text.
-# (Deterministic and free; avoids spending an LLM call on query translation.)
+# Arabic -> English glossary so Arabic questions match English pages.
 AR_EN = {
     "دار جلوبال": "DarGlobal Dar Global", "دار غلوبال": "DarGlobal", "دارجلوبال": "DarGlobal",
     "وصلت": "Wasalt", "دار الاركان": "Dar Al Arkan", "ترامب": "Trump", "برج": "tower",
@@ -58,10 +51,7 @@ AR_EN = {
 }
 
 
-# Proper nouns rewritten to the spelling the source pages use, for the dense model only.
-# Measured on live data: "where is DarGlobal located" ranks the FAQ #1, "where is dar
-# global located" #22, and the Arabic "اين يقع مقر دار جلوبال" #346 -> #1 once the brand is
-# written as on the site. (The model knows the words, not how this brand is spelled.)
+# The embedding model matches names much better when spelled as on the site.
 BRANDS = [
     (r"dar\s*-?\s*global|دار\s*[جغ]لوبال", "DarGlobal"), (r"وصلت", "Wasalt"), (r"ترامب", "Trump"),
     (r"نبتون", "Neptune"), (r"معوض", "Mouawad"), (r"فندي", "Fendi"), (r"ايدا|أيدا", "AIDA"),
@@ -77,10 +67,7 @@ def dense_query(q: str) -> str:
     return q
 
 
-# Topic keywords: words the site uses for a few common intents. Needed where a page has
-# too little text for either lexical or semantic matching - DarGlobal's /careers page is
-# just "Find your next great opportunity ... Showing 0 results", so "jobs" can't reach it.
-# These only ADD search terms; nothing is removed or re-ranked.
+# Extra search terms for intents whose pages have little text (e.g. /careers).
 INTENTS = [
     (r"\b(jobs?|vacanc(y|ies)|hiring|recruit\w*|careers?|internships?|employment|openings?|"
      r"work (at|for|with)|apply for)\b|وظائف|وظيفه|وظيفة|توظيف|تدريب|فرص عمل",
@@ -163,18 +150,14 @@ class BM25:
 
 
 class HybridRetriever:
-    # Source-authority prior: the developer's own project pages are the primary source for
-    # project facts (completion, specs), so they win near-ties against third-party blog
-    # posts or partner pages about the same project. +5% only reorders close RRF scores;
-    # it can't pull in a project chunk that doesn't match the query.
+    # small boost so the developer's own project pages win near-ties
     AUTHORITY = {"project": 1.05, "project_card": 1.05}
-    # result slots (of k) reserved for the best semantic matches; see search()
+    # last slots of the result list go to the best semantic matches
     DENSE_SLOTS = int(os.getenv("DENSE_SLOTS", "2"))
 
     def __init__(self, chunks: list[Chunk], *, dense: np.ndarray | None = None, embedder=None):
         self.chunks = chunks
-        # dense: (n_chunks, dim) L2-normalised vectors row-aligned with `chunks`;
-        # embedder: anything with embed_query(str) -> unit vector
+        # dense: unit vectors row-aligned with chunks
         self.dense = dense if dense is not None and len(dense) == len(chunks) else None
         self.embedder = embedder if self.dense is not None else None
         corpus = [f"{c.title}\n{c.text}" for c in chunks]
@@ -225,11 +208,8 @@ class HybridRetriever:
         lexical = [(i, s) for i, s in sorted(fused.items(), key=lambda x: -x[1])]
         dense = [(i, 1.0 / (rrf_k + r + 1)) for r, i in enumerate(dense_ranked)]
 
-        # Reserved slots instead of one fused ranking: lexical keeps the top positions
-        # (precise on names, prices, typos) and the best semantic matches fill the last
-        # `reserve` slots. Measured: fusing dense into RRF at any weight cost hit@1
-        # (0.89 -> 0.72) on name questions; reserved slots keep that and still put
-        # paraphrase answers ("located" -> "headquartered") in front of the LLM.
+        # Lexical ranking keeps the top positions; semantic matches fill the reserved slots.
+        # Fusing dense into RRF directly lowered hit@1 on name questions (see README).
         reserve = min(self.DENSE_SLOTS, k // 3) if dense else 0
         out, per, taken = [], Counter(), set()
 
