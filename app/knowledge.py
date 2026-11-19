@@ -181,8 +181,9 @@ def portfolio_summary(projects: list[dict]) -> list[Chunk]:
                  site="darglobal", kind="summary") for i, part in enumerate(pack(text, SUMMARY_CHARS))]
     # one chunk per country, so country questions get a complete, unmixed list
     for country, items in by_country.items():
-        body = [f"DarGlobal projects in {country}: {len(items)} projects listed on darglobal.co.uk/projects "
-                f"(complete list; DarGlobal has no other projects in {country}):"]
+        body = [f"DarGlobal projects in {country}: {len(items)} projects in the current portfolio on "
+                f"darglobal.co.uk/projects. Projects named only in older articles are not listed on "
+                f"the site any more; mention them only as such:"]
         for p in sorted(items, key=lambda x: x.get("name", "")):
             extra = ", ".join(x for x in (p.get("location"), p.get("property_type"), p.get("status"),
                                           f"completion {p['completion']}" if p.get("completion") else "") if x)

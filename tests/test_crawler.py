@@ -20,7 +20,9 @@ def site(tmp_path):
         "sitemap_index.xml": "<sitemapindex><sitemap><loc>http://127.0.0.1:{port}/pages.xml</loc></sitemap></sitemapindex>",
         "pages.xml": "<urlset><url><loc>http://127.0.0.1:{port}/a.html</loc></url><url><loc>http://127.0.0.1:{port}/private/x.html</loc></url></urlset>",
         "a.html": PAGE.format(t="Page A", body=long, links="<a href='/b.html'>B</a><a href='/doc.pdf'>pdf</a>"),
-        "b.html": PAGE.format(t="Page B", body=long, links="<a href='/a.html'>A</a><a href='https://other.com/x'>ext</a>"),
+        "b.html": PAGE.format(t="Page B", body=long, links="<a href='/a.html'>A</a><a href='https://other.com/x'>ext</a>"
+                                                           "<a href='/c.html?slug=b'>C</a>"),
+        "c.html": PAGE.format(t="Page C", body=long, links=""),
         "extra.xml": "<urlset><url><loc>http://127.0.0.1:{port}/b.html</loc></url></urlset>",
         "challenge.html":(Path(__file__).parent / "fixtures" / "incapsula_challenge.html").read_text(),
     }
@@ -113,3 +115,11 @@ def test_challenged_host_falls_back_to_render(site, monkeypatch):
                           priority=lambda u: False, max_pages=5)
     assert rendered == [f"{site}/challenge.html"]
     assert [p["title"] for p in pages] == ["Rendered"]
+
+
+def test_query_links_followed_as_clean_paths(site):
+    """DarGlobal project cross-links carry ?slug=...; with drop_query they are crawled, not skipped."""
+    pages = Crawler(PoliteSession(delay=0), workers=2, render=False).crawl(
+        [f"{site}/b.html"], allow=lambda u: u.startswith(site), priority=lambda u: False,
+        max_pages=10, drop_query=True)
+    assert f"{site}/c.html" in {p["url"] for p in pages}

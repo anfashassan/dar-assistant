@@ -19,6 +19,7 @@ from .listings import ListingResult, parse_query, search_listings
 from .llm import LLMError, OpenRouterClient
 from .prompts import build_context, build_messages, build_smalltalk_messages, detect_lang
 from .retrieval import Chunk, normalize
+from .verify import verify_answer
 
 log = logging.getLogger("app.chat")
 
@@ -261,15 +262,17 @@ class ChatService:
         yield {"type": "meta", "sources": self.source_payload(r.chunks),
                "listings": self.listing_payload(r.listings), "lang": detect_lang(question)}
 
+        context = build_context(r.chunks, r.listings)
         key = self._cache_key(question, history)
         cached = self.cache.get(key) if key and use_cache else None
         if cached:
             yield {"type": "delta", "text": cached["text"]}
+            yield verify_answer(cached["text"], context).as_event()
             yield {"type": "done", "model": cached["model"], "cached": True,
                    "latency_ms": int((time.time() - t0) * 1000)}
             return
 
-        messages = build_messages(question, history, build_context(r.chunks, r.listings), self.s.history_turns,
+        messages = build_messages(question, history, context, self.s.history_turns,
                                   scraped_at=self.kb.manifest.get("scraped_at", ""))
         parts: list[str] = []
         try:
@@ -287,6 +290,10 @@ class ChatService:
                             else "The answer was cut short. Tap regenerate to try again.") + "_"}
                     elif key and len(text) > 40:
                         self.cache.set(key, {"text": text, "model": ev["model"]})
+                    check = verify_answer(text, context)
+                    if check.unsupported:
+                        log.warning("figures not found in sources: %s", check.unsupported)
+                    yield check.as_event()
                     yield {"type": "done", "model": ev["model"], "cached": False,
                            "latency_ms": int((time.time() - t0) * 1000), "truncated": not complete}
             return

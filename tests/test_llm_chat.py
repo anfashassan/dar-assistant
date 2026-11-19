@@ -3,11 +3,11 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.chat import ChatService, RateLimiter, TTLCache
 from app.config import Settings
-from app.knowledge import KnowledgeBase
 from app.llm import FREE_ROUTER, LLMError, ModelRegistry, OpenRouterClient
 from app.refresh import Refresher
 
@@ -96,6 +96,21 @@ def test_discovery_adds_free_router():
     assert cands[0].startswith("nvidia/") and cands[-1] == FREE_ROUTER
 
 
+def test_failed_discovery_uses_defaults_and_retries_soon():
+    from app.llm import DEFAULT_FREE
+    c = make_client([], MODELS)
+
+    async def broken(url, **kw):
+        raise httpx.ConnectError("Server disconnected")
+    c._client.get = broken
+    cands = asyncio.run(c.refresh_models())
+    assert cands[:-1] == DEFAULT_FREE and cands[-1] == FREE_ROUTER     # not the router alone
+    c._client.get = FakeHTTP([], MODELS).get
+    c.registry.refreshed_at -= 61
+    asyncio.run(c.maybe_refresh())
+    assert c.registry.source == "auto-discovered"
+
+
 def test_stream_success_and_models_array():
     c = make_client([FakeResp(200, sse("Hello ", "world"))], MODELS)
     asyncio.run(c.refresh_models())
@@ -182,11 +197,6 @@ def test_error_event_in_stream():
     asyncio.run(c.refresh_models())
     evs = asyncio.run(collect(c.stream_chat([{"role": "user", "content": "hi"}])))
     assert evs[0]["text"] == "recovered"
-
-
-@pytest.fixture(scope="module")
-def kb():
-    return KnowledgeBase.load(DATA, raw_dir=DATA / "seed")  # pinned: see tests/test_rag.py
 
 
 def test_chat_service_end_to_end_and_cache(kb):

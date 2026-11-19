@@ -34,6 +34,9 @@ PREFERENCE = [
 EXCLUDE = re.compile(r"(embed|guard|moderation|tts|whisper|audio|image|vision-only|riverflow|"
                      r"coder|lyria|sora|veo|flux|ocr)", re.I)
 FREE_ROUTER = "openrouter/free"
+# used when the catalogue can't be fetched; the router alone sometimes returns empty answers
+DEFAULT_FREE = ["nvidia/nemotron-3-ultra-550b-a55b:free", "google/gemma-4-31b-it:free",
+                "nvidia/nemotron-3.5-super-vl:free"]
 
 
 class LLMError(Exception):
@@ -108,8 +111,11 @@ class OpenRouterClient:
                 if ranked:
                     self.registry.candidates = ranked[:8]
                     self.registry.source = "auto-discovered"
-            except Exception as e:  # keep previous list; the free router is still a fallback
+            except Exception as e:  # keep the previous list, or the defaults; retry soon
                 log.warning("model discovery failed: %s", e)
+                if not [m for m in self.registry.candidates if m != FREE_ROUTER]:
+                    self.registry.candidates = list(DEFAULT_FREE)
+                    self.registry.source = "defaults"
         if FREE_ROUTER not in self.registry.candidates:
             self.registry.candidates.append(FREE_ROUTER)
         self.registry.refreshed_at = time.time()
@@ -117,6 +123,8 @@ class OpenRouterClient:
         return self.registry.candidates
 
     async def maybe_refresh(self, max_age_s: int = 6 * 3600):
+        if self.registry.source in ("none", "defaults"):
+            max_age_s = 60   # discovery failed last time
         if time.time() - self.registry.refreshed_at > max_age_s:
             await self.refresh_models()
 

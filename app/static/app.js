@@ -38,6 +38,9 @@
       bed: (n) => `${n} bed${n === 1 ? "" : "s"}`, bath: (n) => `${n} bath${n === 1 ? "" : "s"}`, sqm: "m²", onRequest: "Price on request",
       sale: "For sale", rent: "For rent", under: "Under", over: "Over", min: "Min", stopped: "Stopped.",
       limited: "Limited mode - AI summary unavailable, showing results directly",
+      verified: (n) => `${n} figure${n === 1 ? "" : "s"} checked against sources`,
+      verifiedTip: "Every price and year in this answer appears in the cited sources",
+      unverified: (n) => `${n} figure${n === 1 ? "" : "s"} not found in sources`,
       fresh: (d) => `Based on public pages of darglobal.co.uk and wasalt.sa · updated ${d}`,
       rateLimited: "You're sending messages quickly - please wait a moment.", netErr: "Connection problem - please try again.",
       starters: [
@@ -57,6 +60,9 @@
       bed: (n) => `${n} غرف`, bath: (n) => `${n} حمام`, sqm: "م²", onRequest: "السعر عند الطلب",
       sale: "للبيع", rent: "للإيجار", under: "أقل من", over: "أكثر من", min: "من", stopped: "تم الإيقاف.",
       limited: "وضع محدود - الملخص الذكي غير متاح، تُعرض النتائج مباشرة",
+      verified: (n) => `تم التحقق من ${n} أرقام من المصادر`,
+      verifiedTip: "كل سعر وسنة في هذه الإجابة موجودة في المصادر",
+      unverified: (n) => `${n} رقم غير موجود في المصادر`,
       fresh: (d) => `من الصفحات العامة لموقعي دار جلوبال ووصلت · آخر تحديث ${d}`,
       rateLimited: "ترسل الرسائل بسرعة - يرجى الانتظار قليلاً.", netErr: "مشكلة في الاتصال - حاول مرة أخرى.",
       starters: [
@@ -90,8 +96,8 @@
     s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
     s = s.replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,;:!?)])/g, "$1<em>$2</em>");
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    s = s.replace(/\[(L?)(\d{1,2})\](?!\()/g, (m, l, n) => `<a href="#" class="cite${l ? " l" : ""}" data-ref="${l}${n}">${l}${n}</a>`);
-    s = s.replace(/\[((?:L?\d{1,2}\s*,\s*)+L?\d{1,2})\]/g, (m, list) =>
+    s = s.replace(/\[(L?)(\d{1,2})\](?!\()/g, (_, l, n) => `<a href="#" class="cite${l ? " l" : ""}" data-ref="${l}${n}">${l}${n}</a>`);
+    s = s.replace(/\[((?:L?\d{1,2}\s*,\s*)+L?\d{1,2})\]/g, (_, list) =>
       list.split(/\s*,\s*/).map((r) => { const l = r.startsWith("L"); return `<a href="#" class="cite${l ? " l" : ""}" data-ref="${r}">${r}</a>`; }).join(""));
     return s;
   }
@@ -240,11 +246,18 @@
     }).join("");
     box.hidden = false;
   }
-  function renderActions(el, answer, question, degraded) {
+  function verifyBadge(v) {
+    if (!v || !v.checked) return "";
+    if (v.unsupported.length) {
+      return `<span class="check warn" title="${esc(v.unsupported.join(", "))}">${esc(t("unverified", v.unsupported.length))}</span>`;
+    }
+    return `<span class="check" title="${esc(t("verifiedTip"))}">${icon("check")}${esc(t("verified", v.checked))}</span>`;
+  }
+  function renderActions(el, answer, question, degraded, verification) {
     const box = $(".actions", el);
     box.innerHTML = `<button type="button" class="act copy" title="${esc(t("copy"))}" aria-label="${esc(t("copy"))}">${icon("copy")}</button>
       <button type="button" class="act retry" title="${esc(t("retry"))}" aria-label="${esc(t("retry"))}">${icon("retry")}</button>
-      ${degraded ? `<span class="note">${esc(t("limited"))}</span>` : ""}`;
+      ${verifyBadge(verification)}${degraded ? `<span class="note">${esc(t("limited"))}</span>` : ""}`;
     box.hidden = false;
     $(".copy", box).onclick = (ev) => {
       navigator.clipboard?.writeText(answer.replace(/\[(L?\d{1,2})\]/g, ""));
@@ -269,7 +282,7 @@
     if (!opts.regenerate) { input.value = ""; autosize(); addUser(text); }
     const el = addBot();
     const ansEl = $(".answer", el), thinking = $(".thinking", el);
-    let answer = "", meta = {}, raf = 0, sources = [];
+    let answer = "", meta = {}, raf = 0, sources = [], verification = null;
     const paint = () => { raf = 0; ansEl.innerHTML = md(answer); ansEl.classList.add("cursor"); scrollDown(); };
 
     controller = new AbortController();
@@ -293,6 +306,7 @@
           let ev; try { ev = JSON.parse(data); } catch { continue; }
           if (ev.type === "meta") { renderListings($(".listings", el), ev.listings); sources = ev.sources || []; }
           else if (ev.type === "delta") { thinking.remove(); answer += ev.text; if (!raf) raf = requestAnimationFrame(paint); }
+          else if (ev.type === "verify") verification = ev;
           else if (ev.type === "done") meta = ev;
           else if (ev.type === "error") throw new Error(t("netErr"));
         }
@@ -309,7 +323,7 @@
       renderSources($(".sources", el), sources.filter((s) => cited.has(s.n)));
       if (answer) {
         history.push({ role: "user", content: text }, { role: "assistant", content: answer.slice(0, 4000) });
-        renderActions(el, answer, text, meta.degraded);
+        renderActions(el, answer, text, meta.degraded, verification);
       }
       controller = null; setBusy(false); scrollDown();
     }

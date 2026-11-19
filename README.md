@@ -94,12 +94,16 @@ flowchart LR
 - **Grounding**: facts about DarGlobal and Wasalt must come from the sources and are cited.
   General questions get a short general answer. Text from scraped pages is treated as data,
   not instructions.
+- **Figure check** (`app/verify.py`): after each answer, every SAR amount and year is matched
+  against the sources the model was given (rounding allowed, Arabic digits included). The UI
+  shows "6 figures checked against sources", or a warning listing any figure it can't find.
 
 ## Testing
 
 ```bash
-pytest -q                 # 84 tests
-python scripts/eval.py    # retrieval check on 21 labelled questions (EN + AR)
+pytest -q                          # 92 tests
+python scripts/eval.py             # retrieval: is a page that answers the question retrieved?
+python scripts/eval_answers.py     # answers: graded by an LLM judge against known facts
 ```
 
 Unit tests cover the parsers (with fixtures from real pages), the crawler against a local
@@ -117,6 +121,18 @@ The question set is small (21), so treat it as a regression check, not a benchma
 Paraphrases like "where is DarGlobal located?" (the page says "headquartered in London") were
 the reason for adding semantic search; they are now also covered by intent keywords, so with
 or without embeddings the score on this set is the same.
+
+`scripts/eval_answers.py` checks the answers themselves. Each of 21 questions has facts taken
+from the scraped data (some computed, like the cheapest land in Dammam) and, for trap
+questions, claims the answer must not make (a project in Paris, a made-up share price, a
+leaked system prompt). A model from a different family than the one answering (Gemma vs.
+Nemotron) grades each answer. Latest run: **21/21 pass**, median answer time 5.5 s, one
+figure flagged by the figure check. Full report: [docs/answer-eval.md](docs/answer-eval.md).
+
+The first run of this eval scored 17/21 and found two real problems: model discovery could
+fail at startup and leave only a router that sometimes returns empty answers (now falls back
+to known models and retries after a minute), and a project in older articles whose page has
+since been removed from DarGlobal's site.
 
 I also ran 84 questions in three rounds against the running app and read every answer:
 general knowledge, small talk, DarGlobal facts, listing searches, Arabic, typos, multi-turn
@@ -198,7 +214,8 @@ scraper/    crawler, HTML extraction, DarGlobal and Wasalt parsers
 data/raw    scraped snapshot (shipped in the image)
 data/seed   small fallback snapshot
 tests/      unit and integration tests
-scripts/    eval.py
+scripts/    eval.py (retrieval), eval_answers.py (answers)
+docs/       screenshot, answer-eval.md
 ```
 
 ## Limitations

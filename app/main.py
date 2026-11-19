@@ -124,6 +124,8 @@ async def chat_sync(req: ChatRequest, request: Request):
             out["sources"], out["listings"] = ev["sources"], ev["listings"]
         elif ev["type"] == "delta":
             out["answer"] += ev["text"]
+        elif ev["type"] == "verify":
+            out["verification"] = {"checked": ev["checked"], "unsupported": ev["unsupported"]}
         elif ev["type"] == "done":
             out.update(model=ev["model"], latency_ms=ev["latency_ms"], cached=ev.get("cached", False))
     return out

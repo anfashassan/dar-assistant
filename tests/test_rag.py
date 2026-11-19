@@ -9,12 +9,6 @@ from app.prompts import build_context, detect_lang
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 
-@pytest.fixture(scope="module")
-def kb():
-    # seed snapshot keeps these stable; scripts/eval.py measures the scraped data
-    return KnowledgeBase.load(DATA, raw_dir=DATA / "seed")
-
-
 def test_official_project_page_wins_near_tie():
     """A third-party blog post about a project shouldn't outrank the developer's own page."""
     from app.retrieval import Chunk, HybridRetriever

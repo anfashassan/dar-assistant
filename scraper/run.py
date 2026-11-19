@@ -140,14 +140,17 @@ class Crawler:
             self._pw_ctx.stop()
 
     def crawl(self, seeds: list[str], *, allow, priority, max_pages: int,
-              max_priority: int | None = None) -> list[dict]:
-        """BFS crawl. `priority(url)` URLs (e.g. listings) are fetched first."""
+              max_priority: int | None = None, drop_query: bool = False) -> list[dict]:
+        """BFS crawl. `priority(url)` URLs (e.g. listings) are fetched first.
+        `drop_query` strips query strings (tracking parameters) instead of skipping those links."""
         hi, lo = deque(), deque()
         seen: set[str] = set()
         n_priority = 0
 
         def push(u: str):
             u = normalize_url(u)
+            if drop_query:
+                u = u.split("?", 1)[0]
             if u in seen or not allow(u):
                 return
             seen.add(u)
@@ -220,10 +223,10 @@ def scrape_darglobal(c: Crawler, max_pages: int) -> tuple[list[dict], list[dict]
     def allow(u: str) -> bool:
         p = urlparse(u)
         return (p.netloc.removeprefix("www.") == "darglobal.co.uk"
-                and not re.match(r"^/(ar|fr|ru|zh|de|es|it)(/|$)", p.path)
-                and "?" not in u)
+                and not re.match(r"^/(ar|fr|ru|zh|de|es|it)(/|$)", p.path))
 
-    pages = c.crawl(seeds, allow=allow, max_pages=max_pages,
+    # project cross-links carry "?slug=..."; crawl the clean path instead of skipping them
+    pages = c.crawl(seeds, allow=allow, max_pages=max_pages, drop_query=True,
                     priority=lambda u: urlparse(u).path in project_paths)
     docs, projects = [], []
     for p in pages:
