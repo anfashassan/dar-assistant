@@ -34,6 +34,7 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1500)
     history: list[Message] = Field(default_factory=list, max_length=40)
+    regenerate: bool = Field(default=False, description="skip the answer cache (UI 'Regenerate')")
 
 
 class State:
@@ -70,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DarGlobal x Wasalt Property Assistant",
+    title="Haya - Property Assistant API",
     description="RAG chatbot over publicly available DarGlobal and Wasalt data, powered by free OpenRouter models.",
     version="1.0.0",
     lifespan=lifespan,
@@ -102,7 +103,7 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     async def gen():
         try:
-            async for ev in state.chat.answer(req.message.strip(), history):
+            async for ev in state.chat.answer(req.message.strip(), history, use_cache=not req.regenerate):
                 if await request.is_disconnected():
                     break
                 yield sse(ev)

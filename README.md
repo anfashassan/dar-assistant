@@ -1,6 +1,7 @@
 ---
-title: DarGlobal x Wasalt Property Assistant
+title: Haya - Property Assistant
 emoji: 🏙️
+short_description: Property assistant for DarGlobal & Wasalt (EN/AR)
 colorFrom: gray
 colorTo: yellow
 sdk: docker
@@ -8,7 +9,7 @@ app_port: 7860
 pinned: false
 ---
 
-# DarGlobal × Wasalt Property Assistant
+# Haya · هيا: property assistant for DarGlobal & Wasalt
 
 A retrieval-augmented chatbot that answers questions about **DarGlobal** developments and
 **Wasalt** property listings, using data scraped from their public websites and a **free

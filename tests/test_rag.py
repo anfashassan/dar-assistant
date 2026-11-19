@@ -131,3 +131,63 @@ def test_chunking():
     assert [s[0] for s in secs] == ["A", "A > B", "A > C"]
     parts = pack("para one. " * 300, size=500)
     assert all(len(p) <= 520 for p in parts) and len(parts) > 3
+
+
+def test_city_name_is_not_a_district():
+    # a few live listings carry "Riyadh" in the district field; that used to become a district
+    # filter, which matched nothing and forced "closest matches" on every Riyadh question
+    q = parse_query("villas for sale in Riyadh under 2 million", ["Riyadh", "Al Narjis", "Al Malqa"])
+    assert q.city == "Riyadh" and q.district is None
+
+
+def test_budget_results_are_diverse():
+    from app.listings import ListingQuery
+    listings = [{"id": str(i), "url": f"u{i}", "city": "Riyadh", "property_type": "Villa", "purpose": "sale",
+                 "district": "Al-Mahdiyah" if i < 20 else f"D{i % 7}", "price_sar": 2_000_000 - i * 10_000}
+                for i in range(80)]
+    r = search_listings(listings, ListingQuery(city="Riyadh", property_type="Villa", price_max=2_000_000, intent=True))
+    districts = [l["district"] for l in r.matches]
+    prices = [l["price_sar"] for l in r.matches]
+    assert len(r.matches) == 6 and r.total == 80
+    assert max(districts.count(d) for d in set(districts)) <= 2          # no single district dominates
+    assert max(prices) - min(prices) >= 300_000                           # spread across the budget
+
+
+def test_implausible_prices_are_dropped(tmp_path):
+    """Live data: Dammam land 'for sale' at SAR 1,828 (per-m2 price) and a 'rental' at SAR 1.9B."""
+    import json, shutil
+    from app.knowledge import plausible_price
+    assert not plausible_price({"purpose": "sale", "price_sar": 1828})
+    assert not plausible_price({"purpose": "rent", "price_sar": 1_906_550_000})
+    assert plausible_price({"purpose": "sale", "price_sar": 775_000}) and plausible_price({"purpose": "rent", "price_sar": 38_000})
+    assert plausible_price({"purpose": "sale", "price_sar": None})          # price on request is kept
+    raw = tmp_path / "raw"
+    shutil.copytree(DATA / "seed", raw)
+    good = json.loads((raw / "listings.json").read_text())
+    bad = [{**good[0], "id": "x1", "url": "u-x1", "price_sar": 1828}]
+    (raw / "listings.json").write_text(json.dumps(good + bad))
+    kb = KnowledgeBase.load(DATA, raw_dir=raw, embedder=None)
+    assert len(kb.listings) == len(good) and all(l["id"] != "x1" for l in kb.listings)
+
+
+def test_district_articles_and_number_words():
+    d = ["An-Narjis", "Al Yasmeen", "City Center"]
+    assert parse_query("villa in al narjis riyadh with at least 5 bedrooms", d).district == "An-Narjis"
+    assert parse_query("same city under 3 million", d).district is None          # generic words never match
+    assert parse_query("three bedroom apartment in Jeddah").bedrooms_exact == 3
+    assert parse_query("شقق للإيجار في جدة بثلاث غرف").bedrooms_exact == 3
+    assert parse_query("شقة غرفتين للبيع في الرياض").bedrooms_exact == 2
+
+
+def test_more_district_traps_from_live_data():
+    d = ["Al-Riyadh", "The Wasam", "Al Samer", "An-Narjis"]   # Al-Riyadh is a district of Jeddah
+    assert parse_query("villas for sale in Riyadh", d).district is None
+    assert parse_query("villas in the same city under 3 million", d).district is None
+    assert parse_query("villa in al samer", d).district == "Al Samer"
+    assert parse_query("I have 1.5 million riyals, what can I buy in Jeddah?").price_max == 1_500_000
+
+
+def test_property_word_is_not_a_district():
+    # a live Jeddah district is literally called "The Apartment"
+    q = parse_query("What's the median apartment price in Jeddah?", ["The Apartment", "Al Rayaan"])
+    assert q.district is None and q.property_type == "Apartment" and q.city == "Jeddah"

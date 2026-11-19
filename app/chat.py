@@ -23,16 +23,21 @@ from .retrieval import Chunk, normalize
 log = logging.getLogger("app.chat")
 
 FOLLOWUP = re.compile(r"\b(it|its|they|them|their|those|these|same|which one|what about|how about|"
+                      r"the (villas?|project|tower|units?|apartments?|residences?|development|mansions?|penthouses?)|"
                       r"the (first|second|third|last) one|cheaper|bigger|smaller)\b|"
                       r"هذا|هذه|ذلك|تلك|نفس|ماذا عن|وماذا", re.I)
 PLACES = (r"saudi|ksa|riyadh|jeddah|oman|muscat|uae|emirates|dubai|ras al khaimah|rak|qatar|doha|"
           r"spain|marbella|uk|united kingdom|london|abroad|gcc|middle east")
 AGG_PROJECTS = re.compile(r"\b(projects?|portfolio|developments?|properties)\b.*\b(list|which|all|how many|where|"
                           r"countries|overview)\b|\b(list|which|what|all|how many|overview)\b.*\b(projects|developments)\b|"
-                          rf"\b(projects|developments)\b.*\bin\s+(the\s+)?({PLACES})\b|"
+                          rf"\b(projects?|developments?)\b.*\bin\s+(the\s+)?({PLACES}|[a-z]{{4,}})\b|"
                           r"مشاريع|مشروع", re.I)
-AGG_MARKET = re.compile(r"\b(average|median|typical|price range|market|how many listings|price per|cost of)\b|"
-                        r"متوسط|اسعار|أسعار|السوق", re.I)
+AGG_MARKET = re.compile(r"\b(average|median|typical|price range|market|how many listings|price per|cost of|"
+                        r"how much (is|are|does|do)|price of)\b|متوسط|اسعار|أسعار|السوق|كم سعر|بكم", re.I)
+SAME_PLACE = re.compile(r"\b(same (city|area|place|location|neighbou?rhood)|nearby|near (it|there|by)|close to it|"
+                        r"in that (city|area))\b|نفس المدينة|نفس المنطقة|قريب", re.I)
+PRICE_Q = re.compile(r"\bhow much\b|\bprice of\b|\bcost of\b|\b(median|average|typical)\b.*\bprices?\b|"
+                     r"كم سعر|بكم|كم يكلف|متوسط سعر|متوسط اسعار|متوسط أسعار", re.I)
 DARGLOBAL_HINT = re.compile(r"dar ?global|trump|aida|neptune|mouawad|fendi|missoni|pagani|aston martin|elie saab|"
                             r"lamborghini|amaya|rayana|astera|marea|tierra viva|les vagues|mulliner|دار جلوبال|ترامب", re.I)
 
@@ -43,16 +48,33 @@ SMALLTALK = re.compile(
     r"(hi|hello|hey|hiya|yo|salam|salaam|good (morning|afternoon|evening|night)|"
     r"thanks?|thank you( so much)?|thx|ok(ay)?|cool|great|nice|awesome|perfect|bye|goodbye|see you|"
     r"who are you|what are you|who made you|who built you|what can you do|what do you do|help|"
-    r"how are you( doing)?|what('?s| is) your name|are you (a )?(bot|human|robot|ai|real|chatgpt|claude)|"
+    r"how are you( doing)?|what('?s| is) your name|are you (a )?(real )?(bot|human|person|robot|ai|real|chatgpt|claude)|"
     r"why did you (message|text|contact) me|"
     r"مرحبا|مرحباً|اهلا|أهلا|هلا|السلام عليكم|سلام|شكرا|شكراً|من انت|من أنت|كيف حالك|مع السلامة|ماذا تستطيع)"
-    r"( there| again| dar assistant| bot)?", re.I)
+    r"( there| again| haya| bot)?", re.I)
 
 
 def is_smalltalk(text: str) -> bool:
     t = re.sub(r"[^\w\s'؀-ۿ]|[؟،؛]", " ", text.strip().lower())   # incl. Arabic ? , ;
     t = re.sub(r"\s+", " ", t).strip()
     return bool(t) and len(t) <= 60 and SMALLTALK.fullmatch(t) is not None
+
+
+COUNTRIES = {
+    "Saudi Arabia": r"saudi|ksa|riyadh|jeddah|السعودية|المملكة|الرياض|جدة|جده",
+    "United Arab Emirates": r"\buae\b|emirates|dubai|ras al khaimah|\brak\b|الامارات|الإمارات|دبي",
+    "Oman": r"\boman\b|muscat|\baida\b|عمان|عُمان|مسقط",
+    "Qatar": r"qatar|doha|قطر|الدوحة",
+    "Spain": r"spain|marbella|benahav|اسبانيا|إسبانيا",
+    "United Kingdom": r"\buk\b|united kingdom|britain|england|london|بريطانيا|لندن",
+}
+
+
+def detect_country(text: str) -> str | None:
+    for country, pat in COUNTRIES.items():
+        if re.search(pat, text, re.I):
+            return country
+    return None
 
 
 @dataclass
@@ -126,6 +148,14 @@ class ChatService:
     def _index_district_city(self):
         self.districts = sorted({l["district"] for l in self.kb.listings if l.get("district")})
         self.cities = sorted({l["city"] for l in self.kb.listings if l.get("city")})
+        # project entity index: "The Astera, Interiors by Aston Martin" -> key "astera"
+        cards = {c.url: c for c in self.kb.chunks if c.kind == "project_card"}
+        self.project_keys: list[tuple[re.Pattern, Chunk]] = []
+        for p in self.kb.projects:
+            card = cards.get(p.get("url"))
+            core = re.sub(r"^the\s+", "", normalize(re.split(r",|\s[-–|]\s", p.get("name", ""))[0]).strip())
+            if card and (len(core) >= 4 or re.search(r"\d", core)):
+                self.project_keys.append((re.compile(rf"\b{re.escape(core)}\b"), card))
 
     # ----------------------------------------------------------- retrieval
     def retrieve(self, question: str, history: list[dict]) -> Retrieved:
@@ -134,14 +164,36 @@ class ChatService:
         search_query = f"{prev}\n{question}" if is_followup else question
 
         chunks = self.kb.retriever.search(search_query, k=self.s.top_k) if self.kb.retriever else []
-        chunks = self._add_summaries(question, chunks)
+        chunks = self._add_summaries(question, chunks, context=search_query)
 
         lq = parse_query(question, self.districts, self.cities)
         if is_followup and prev:
-            lq = parse_query(prev, self.districts, self.cities).merged_with(lq)
+            base = None
+            for earlier in [m["content"] for m in history if m.get("role") == "user" and m.get("content")][-3:]:
+                q_ = parse_query(earlier, self.districts, self.cities)
+                base = q_ if base is None else base.merged_with(q_)
+            lq = base.merged_with(lq)
+        if lq.purpose is None and PRICE_Q.search(question):
+            lq.purpose = "sale"   # "how much is a villa?" means buying; rents are asked for explicitly
+        # "...in the same city": take the city from a project discussed earlier (Neptune -> Riyadh),
+        # but only when this message actually asks to search (not "how many bedrooms do they have?")
+        own = parse_query(question, self.districts, self.cities)
+        wants_search = bool(own.purpose or own.price_max or own.price_min or SAME_PLACE.search(question))
+        if not lq.city and is_followup and wants_search:
+            recent = " ".join(m["content"] for m in history if m.get("role") == "user" and m.get("content"))
+            for card in self._linked_projects(recent[-1500:]):
+                city = parse_query(card.meta["project"].get("location", ""), [], self.cities).city
+                if city:
+                    lq.city = city
+                    break
         about_darglobal = bool(DARGLOBAL_HINT.search(question)) and not re.search(r"wasalt|وصلت", question, re.I)
         listings = None
-        if self.kb.listings and lq.intent and not about_darglobal:
+        refines = bool(own.intent or wants_search or own.city or own.district or own.sort != "relevance"
+                       or own.bedrooms_exact is not None or own.bedrooms_min is not None
+                       or re.search(r"\b(cheaper|bigger|larger|smaller|newer|newest|older)\b|ارخص|أرخص|اكبر|أكبر|احدث|أحدث", question, re.I))
+        if is_followup and not refines:
+            lq = own   # "how many bedrooms do the villas have?" asks about the project, not a new search
+        if self.kb.listings and lq.intent and lq.concrete() and not about_darglobal:
             listings = search_listings(self.kb.listings, lq, limit=self.s.max_listings_in_context)
             # listing cards are shown separately; drop duplicate listing chunks from documents
             # the structured search is authoritative for listings: drop listing chunks
@@ -149,13 +201,31 @@ class ChatService:
             chunks = [(c, s) for c, s in chunks if c.kind != "listing"][:4]
         return Retrieved(chunks=chunks, listings=listings, search_query=search_query)
 
-    def _add_summaries(self, question: str, chunks):
+    def _linked_projects(self, text: str) -> list:
+        nt = normalize(text)
+        return [card for pat, card in self.project_keys if pat.search(nt)]
+
+    def _add_summaries(self, question: str, chunks, context: str = ""):
         extra = []
-        if AGG_PROJECTS.search(question) or (DARGLOBAL_HINT.search(question) and re.search(r"\b(list|all|which|how many)\b", question, re.I)):
-            extra += [c for c in self.kb.chunks if c.kind == "summary" and c.site == "darglobal"]
+        nq = normalize(question)
+        # named projects always reach the model ("Compare The Astera and Urban Oasis" used to
+        # retrieve only Urban Oasis pages and claim The Astera didn't exist)
+        named = [card for pat, card in self.project_keys if pat.search(nq)]
+        if not named and context and context != question:   # follow-up: projects named earlier
+            named = [card for pat, card in self.project_keys if pat.search(normalize(context))]
+        extra += named[:4]
+        country_q = bool(DARGLOBAL_HINT.search(question)) and bool(detect_country(question)) and not named
+        if country_q or AGG_PROJECTS.search(question) or (DARGLOBAL_HINT.search(question) and re.search(r"\b(list|all|which|how many)\b", question, re.I)):
+            country = detect_country(question)
+            port = [c for c in self.kb.chunks if c.kind == "summary" and c.site == "darglobal"]
+            focused = [c for c in port if c.meta.get("country") == country] if country else []
+            extra += focused or [c for c in port if not c.meta.get("country")]
         if AGG_MARKET.search(question):
             extra += [c for c in self.kb.chunks if c.kind == "summary" and c.site == "wasalt"]
+        extra = list({c.id: c for c in extra}.values())
         ids = {c.id for c in extra}
+        # per-country portfolio chunks are injected deliberately (above), never via plain search
+        chunks = [(c, s) for c, s in chunks if not c.meta.get("country")]
         merged = [(c, 1.0) for c in extra] + [(c, s) for c, s in chunks if c.id not in ids]
         return merged[: self.s.top_k + 2]
 
@@ -187,7 +257,7 @@ class ChatService:
         return hashlib.sha1(normalize(re.sub(r"\s+", " ", question.strip())).encode()).hexdigest()
 
     # --------------------------------------------------------------- answer
-    async def answer(self, question: str, history: list[dict]) -> AsyncIterator[dict]:
+    async def answer(self, question: str, history: list[dict], use_cache: bool = True) -> AsyncIterator[dict]:
         if is_smalltalk(question):
             async for ev in self._smalltalk(question, history):
                 yield ev
@@ -198,7 +268,7 @@ class ChatService:
                "listings": self.listing_payload(r.listings), "lang": detect_lang(question)}
 
         key = self._cache_key(question, history)
-        cached = self.cache.get(key) if key else None
+        cached = self.cache.get(key) if key and use_cache else None
         if cached:
             yield {"type": "delta", "text": cached["text"]}
             yield {"type": "done", "model": cached["model"], "cached": True,
@@ -246,9 +316,9 @@ class ChatService:
         except LLMError as e:
             log.warning("LLM unavailable for small talk: %s", e)
         yield {"type": "delta", "text": (
-            "أنا Dar Assistant، أساعدك في استكشاف مشاريع دار جلوبال وعقارات وصلت. اسألني مثلاً: "
+            "أنا هيا، أساعدك في استكشاف مشاريع دار جلوبال وعقارات وصلت. اسألني مثلاً: "
             "«ما هي مشاريع دار جلوبال في الرياض؟»" if ar else
-            "I'm Dar Assistant - I help you explore DarGlobal's projects and Wasalt property listings. "
+            "I'm Haya - I help you explore DarGlobal's projects and Wasalt property listings. "
             "Try: *\"Which DarGlobal projects are in Saudi Arabia?\"* or *\"Villas for sale in Riyadh under 2M SAR\"*.")}
         yield {"type": "done", "model": "canned (LLM unavailable)", "cached": False,
                "latency_ms": int((time.time() - t0) * 1000), "degraded": True}

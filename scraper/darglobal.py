@@ -51,7 +51,7 @@ NON_PROJECT_PREFIXES = ("/press", "/blog", "/partners", "/privacy", "/terms", "/
 # section index pages that live next to project pages ("/one-of-one" lists the
 # one-of-one projects but isn't one itself)
 NON_PROJECT_PATHS = {"/one-of-one", "/trump-plaza", "/rayana", "/amaya", "/play-project",
-                     "/lp", "/landing-page"}
+                     "/lp", "/landing-page", "/landing-page/aida"}
 
 
 def is_project_path(path: str) -> bool:

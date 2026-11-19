@@ -3,83 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Property Concierge · DarGlobal × Wasalt</title>
-<meta name="description" content="AI property assistant grounded in public DarGlobal and Wasalt data.">
+<title>Haya · Property assistant for DarGlobal &amp; Wasalt</title>
+<meta name="description" content="Haya answers questions about DarGlobal's branded residences and finds homes on Wasalt across Saudi Arabia, in English and Arabic.">
+<meta name="theme-color" content="#f7f4ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111216" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Haya · Property assistant">
+<meta property="og:description" content="Ask about DarGlobal projects or find homes on Wasalt, in English or Arabic.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314161b'/%3E%3Ctext x='32' y='42' font-family='Georgia' font-size='28' fill='%23c9a66b' text-anchor='middle'%3E%C3%97%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2316181d'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='34' font-weight='600' fill='%23c9a66b' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar" id="sidebar">
-    <div class="brand">
-      <div class="mark" aria-hidden="true">×</div>
-      <div>
-        <div class="brand-title" data-i18n="brand">Property Concierge</div>
-        <div class="brand-sub">DarGlobal × Wasalt</div>
-      </div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Haya home">
+      <span class="logo" aria-hidden="true">H</span>
+      <span class="brand-text">
+        <span class="brand-name">Haya <span class="brand-ar">هيا</span></span>
+        <span class="brand-tag" data-i18n="tagline">Property assistant · DarGlobal &amp; Wasalt</span>
+      </span>
+    </a>
+    <nav class="top-actions">
+      <button class="ghost" id="langToggle" type="button" aria-label="Switch language">ع</button>
+      <button class="ghost icon" id="themeToggle" type="button" aria-label="Toggle dark mode"></button>
+      <button class="ghost new" id="newChat" type="button"><span class="ic" data-icon="plus"></span><span data-i18n="newChat">New chat</span></button>
+    </nav>
+  </header>
+
+  <main class="thread" id="thread" aria-live="polite"></main>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <div class="composer-box">
+      <textarea id="input" rows="1" maxlength="1500" data-i18n-ph="placeholder" placeholder="Ask Haya about a project, a city or a budget…" aria-label="Message"></textarea>
+      <button type="button" class="round stop" id="stopBtn" hidden aria-label="Stop"><span class="ic" data-icon="stop"></span></button>
+      <button type="submit" class="round send" id="sendBtn" aria-label="Send" disabled><span class="ic" data-icon="send"></span></button>
     </div>
-    <button class="btn-new" id="newChat"><span aria-hidden="true">＋</span> <span data-i18n="newChat">New conversation</span></button>
-
-    <section class="side-section">
-      <h3 data-i18n="knowledge">Knowledge base</h3>
-      <div class="stats">
-        <div class="stat"><span class="stat-n" id="statProjects">–</span><span class="stat-l" data-i18n="projects">DarGlobal projects</span></div>
-        <div class="stat"><span class="stat-n" id="statListings">–</span><span class="stat-l" data-i18n="listings">Wasalt listings</span></div>
-        <div class="stat"><span class="stat-n" id="statPages">–</span><span class="stat-l" data-i18n="pages">Pages indexed</span></div>
-        <div class="stat"><span class="stat-n" id="statChunks">–</span><span class="stat-l" data-i18n="chunks">Search chunks</span></div>
-      </div>
-      <p class="side-note" id="dataNote"></p>
-    </section>
-
-    <section class="side-section">
-      <h3 data-i18n="engine">Engine</h3>
-      <ul class="engine">
-        <li><span class="dot" id="llmDot"></span><span id="llmModel">…</span></li>
-        <li data-i18n="retrieval">Hybrid retrieval · BM25 + n-grams + semantic</li>
-        <li data-i18n="filters">Structured listing filters (EN/AR)</li>
-      </ul>
-    </section>
-
-    <div class="side-foot">
-      <div class="toggles">
-        <button class="chip" id="langToggle" aria-label="Switch language">العربية</button>
-        <button class="chip" id="themeToggle" aria-label="Toggle theme">☾</button>
-        <a class="chip" href="/docs" target="_blank" rel="noopener">API</a>
-      </div>
-      <p class="credit">Built by Anfas Hassan · data from public pages of darglobal.co.uk &amp; wasalt.sa</p>
-    </div>
-  </aside>
-
-  <main class="main">
-    <header class="topbar">
-      <button class="icon-btn" id="menuBtn" aria-label="Menu">☰</button>
-      <span class="topbar-title">Property Concierge</span>
-      <button class="icon-btn" id="newChatTop" aria-label="New conversation">＋</button>
-    </header>
-
-    <div class="thread" id="thread" aria-live="polite">
-      <div class="welcome" id="welcome">
-        <p class="eyebrow" data-i18n="eyebrow">DarGlobal developments · Wasalt marketplace</p>
-        <h1 data-i18n="hero">How can I help you find your next property?</h1>
-        <p class="lede" data-i18n="lede">Ask about DarGlobal's branded residences across the Gulf and Europe, or search Wasalt listings in Saudi Arabia by city, budget and bedrooms. Facts are cited to their source pages.</p>
-        <div class="suggestions" id="suggestions"></div>
-      </div>
-    </div>
-
-    <form class="composer" id="composer" autocomplete="off">
-      <div class="composer-box">
-        <textarea id="input" rows="1" maxlength="1500" data-i18n-ph="placeholder" placeholder="Ask about a project, a city, a budget…"></textarea>
-        <button type="button" class="stop" id="stopBtn" hidden aria-label="Stop generating">■</button>
-        <button type="submit" class="send" id="sendBtn" aria-label="Send">↑</button>
-      </div>
-      <p class="disclaimer" data-i18n="disclaimer">Answers are generated from publicly available website data and may be out of date. Not financial advice.</p>
-    </form>
-  </main>
+    <p class="disclaimer" data-i18n="disclaimer">Haya can make mistakes. Listing prices come from Wasalt and may have changed. Not financial advice.</p>
+  </form>
 </div>
-<div class="scrim" id="scrim"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

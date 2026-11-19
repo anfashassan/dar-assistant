@@ -24,6 +24,22 @@ SUMMARY_CHARS = 2400  # max size of a generated summary chunk; prompts.py never 
 SITE_LABEL = {"darglobal": "DarGlobal", "wasalt": "Wasalt"}
 
 
+# Sanity bounds for listing prices. Live Wasalt data has a few impossible values: land "for
+# sale" at SAR 1,100-9,375 (the per-m2 price shown as the total) and "rentals" of SAR 3M-1.9B
+# (sale prices / typos). They would win "cheapest land" questions and skew the medians.
+SALE_MIN, SALE_MAX = 50_000, 500_000_000
+RENT_MIN, RENT_MAX = 500, 2_000_000   # per period; daily/monthly rents sit well inside this
+
+
+def plausible_price(l: dict) -> bool:
+    p = l.get("price_sar")
+    if p is None:
+        return True   # "price on request" listings are still useful
+    if l.get("purpose") == "rent":
+        return RENT_MIN <= p <= RENT_MAX
+    return SALE_MIN <= p <= SALE_MAX
+
+
 def fmt_sar(v) -> str:
     if v in (None, ""):
         return "price on request"
@@ -162,9 +178,22 @@ def portfolio_summary(projects: list[dict]) -> list[Chunk]:
                                            f"completion {p['completion']}" if p.get("completion") else "") if x)
             lines.append(f"- {p.get('name')}" + (f" — {extra}" if extra else ""))
     text = "\n".join(lines)
-    return [Chunk(id="", text=part if i == 0 else "DarGlobal project portfolio overview (continued)\n" + part,
-                  title="DarGlobal project portfolio overview", url="https://darglobal.co.uk/projects",
-                  site="darglobal", kind="summary") for i, part in enumerate(pack(text, SUMMARY_CHARS))]
+    out = [Chunk(id="", text=part if i == 0 else "DarGlobal project portfolio overview (continued)\n" + part,
+                 title="DarGlobal project portfolio overview", url="https://darglobal.co.uk/projects",
+                 site="darglobal", kind="summary") for i, part in enumerate(pack(text, SUMMARY_CHARS))]
+    # one focused chunk per country: "projects in Oman?" gets exactly the 13 Oman projects
+    # (with the full overview a free model once listed Saudi and Spanish projects under Oman)
+    for country, items in by_country.items():
+        body = [f"DarGlobal projects in {country}: {len(items)} projects listed on darglobal.co.uk/projects "
+                f"(complete list; DarGlobal has no other projects in {country}):"]
+        for p in sorted(items, key=lambda x: x.get("name", "")):
+            extra = ", ".join(x for x in (p.get("location"), p.get("property_type"), p.get("status"),
+                                          f"completion {p['completion']}" if p.get("completion") else "") if x)
+            body.append(f"- {p.get('name')}" + (f" - {extra}" if extra else ""))
+        out.append(Chunk(id="", text="\n".join(body)[:SUMMARY_CHARS], title=f"DarGlobal projects in {country}",
+                         url="https://darglobal.co.uk/projects", site="darglobal", kind="summary",
+                         meta={"country": country}))
+    return out
 
 
 def market_summary(listings: list[dict]) -> list[Chunk]:
@@ -224,7 +253,11 @@ class KnowledgeBase:
                 kb.pages += [p for p in seed_pages if p.get("site") == site]
                 kb.source[site] = "seed" if any(p.get("site") == site for p in seed_pages) else "none"
         kb.projects = _read_json(raw / "projects.json") or _read_json(seed / "projects.json")
-        kb.listings = _read_json(raw / "listings.json") or _read_json(seed / "listings.json")
+        listings = _read_json(raw / "listings.json") or _read_json(seed / "listings.json")
+        kb.listings = [l for l in listings if plausible_price(l)]
+        if len(kb.listings) < len(listings):
+            log.info("dropped %d listings with implausible prices (e.g. per-m2 shown as total)",
+                     len(listings) - len(kb.listings))
         mf = raw / "manifest.json"
         kb.manifest = json.loads(mf.read_text()) if mf.exists() else {}
         kb.build()

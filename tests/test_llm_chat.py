@@ -143,7 +143,7 @@ def test_smalltalk_detection():
 
 
 def test_smalltalk_skips_retrieval_and_sources(kb):
-    llm = make_client([FakeResp(200, sse("I'm Dar Assistant."))], MODELS)
+    llm = make_client([FakeResp(200, sse("I'm Haya."))], MODELS)
     asyncio.run(llm.refresh_models())
     svc = ChatService(Settings(), kb, llm)
     evs = asyncio.run(collect(svc.answer("who are you?", [])))
@@ -156,7 +156,7 @@ def test_smalltalk_without_llm_is_friendly(kb):
     svc = ChatService(Settings(), kb, OpenRouterClient(Settings(openrouter_api_key="")))
     evs = asyncio.run(collect(svc.answer("hello", [])))
     text = "".join(e.get("text", "") for e in evs if e["type"] == "delta")
-    assert "Dar Assistant" in text and "temporarily unavailable" not in text
+    assert "Haya" in text and "temporarily unavailable" not in text
 
 
 def test_prompt_speaks_naturally():
@@ -291,3 +291,72 @@ def test_merge_records_never_shrinks():
     merged = {r["id"]: r["price"] for r in merge_records(old, new, "id")}
     assert merged == {"1": 10, "2": 25, "3": 30, "4": 40}   # updated + added, none lost
     assert merge_records(old, [], "id") == old
+
+
+def test_regenerate_bypasses_cache(kb):
+    llm = make_client([FakeResp(200, sse("first answer here, long enough to cache it")),
+                       FakeResp(200, sse("second, freshly generated answer text"))], MODELS)
+    asyncio.run(llm.refresh_models())
+    svc = ChatService(Settings(), kb, llm)
+    text = lambda evs: "".join(e.get("text", "") for e in evs if e["type"] == "delta")
+    first = text(asyncio.run(collect(svc.answer("Tell me about Trump Tower Jeddah", []))))
+    again = text(asyncio.run(collect(svc.answer("Tell me about Trump Tower Jeddah", []))))
+    fresh = text(asyncio.run(collect(svc.answer("Tell me about Trump Tower Jeddah", [], use_cache=False))))
+    assert again == first and fresh.startswith("second")
+
+
+def test_named_projects_always_reach_the_model(kb):
+    """Live failure: 'Compare The Astera and Urban Oasis' retrieved only Urban Oasis pages."""
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    titles = [c.title for c, _ in svc.retrieve("Compare The Astera and Urban Oasis by Missoni", []).chunks]
+    assert any("Astera" in t for t in titles) and any("Urban Oasis" in t for t in titles)
+
+
+def test_country_question_gets_focused_portfolio(kb):
+    """Live failure: the Arabic Oman question listed Saudi/Spanish projects under Oman."""
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    for q in ("Which DarGlobal projects are in Oman?", "ما هي مشاريع دار جلوبال في عمان؟"):
+        first = svc.retrieve(q, []).chunks[0][0]
+        assert first.kind == "summary" and first.meta.get("country") == "Oman", q
+    # a plain project question doesn't get a country chunk via search
+    assert all(not c.meta.get("country") for c, _ in svc.retrieve("When will Trump Tower Jeddah be completed?", []).chunks)
+
+
+def test_listing_search_needs_a_real_filter(kb):
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    for q in ("What is Wasalt?", "How can I list my property on Wasalt?", "What does off-plan property mean?"):
+        assert svc.retrieve(q, []).listings is None, q
+    assert svc.retrieve("villas for sale in Riyadh", []).listings is not None
+
+
+def test_followup_remembers_two_turns_back(kb):
+    """Live failure: 'only the newest ones' (3rd turn) lost the Jeddah villa filters."""
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    hist = [{"role": "user", "content": "Show me villas for sale in Riyadh under 2 million"},
+            {"role": "assistant", "content": "..."},
+            {"role": "user", "content": "what about Jeddah?"}, {"role": "assistant", "content": "..."}]
+    f = svc.retrieve("only the newest ones", hist).listings.query.active()
+    assert f["city"] == "Jeddah" and f["property_type"] == "Villa" and f["price_max"] == 2_000_000 and f["sort"] == "year_desc"
+
+
+def test_followups_found_in_live_testing(kb):
+    """Round-2 QA: project follow-ups vs. search follow-ups."""
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    neptune = [{"role": "user", "content": "Tell me about Neptune by Mouawad"}, {"role": "assistant", "content": "..."}]
+    r = svc.retrieve("How many bedrooms do the villas have?", neptune)
+    assert r.listings is None and "Neptune" in r.chunks[0][0].title       # about the project, not a search
+    r = svc.retrieve("When will it be completed?", neptune)
+    assert "Neptune" in r.chunks[0][0].title
+    villas = [{"role": "user", "content": "Show me villas for sale in Riyadh under 2 million"}, {"role": "assistant", "content": "..."}]
+    r = svc.retrieve("cheaper ones?", villas)
+    assert r.listings.query.city == "Riyadh" and r.listings.query.sort == "price_asc"
+    r = svc.retrieve("and with 5 bedrooms?", villas)
+    assert r.listings.query.bedrooms_exact == 5 and r.listings.query.price_max == 2_000_000
+
+
+def test_price_questions_mean_buying(kb):
+    svc = ChatService(Settings(), kb, OpenRouterClient(Settings()))
+    for q in ("How much is a villa in Riyadh?", "كم سعر فيلا في الرياض؟"):
+        r = svc.retrieve(q, [])
+        assert r.listings.query.purpose == "sale" and any(c.kind == "summary" for c, _ in r.chunks), q
+    assert svc.retrieve("How much is the rent for a villa in Riyadh?", []).listings.query.purpose == "rent"

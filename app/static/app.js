@@ -1,38 +1,71 @@
 (() => {
   "use strict";
-  const $ = (s) => document.querySelector(s);
+  const $ = (s, r = document) => r.querySelector(s);
   const thread = $("#thread"), input = $("#input"), sendBtn = $("#sendBtn"), stopBtn = $("#stopBtn");
   const store = {
     get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
+  // ----------------------------------------------------------------- icons
+  const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const ICONS = {
+    plus: P('<path d="M12 5v14M5 12h14"/>'),
+    send: P('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+    stop: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+    sun: P('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    moon: P('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+    copy: P('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>'),
+    check: P('<path d="M5 12.5l4.5 4.5L19 7"/>'),
+    retry: P('<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/>'),
+    globe: P('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>'),
+    tower: P('<path d="M7 21V5l5-2 5 2v16M4 21h16M10 8h1M13 8h1M10 12h1M13 12h1M10 16h1M13 16h1"/>'),
+    home: P('<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5M10 20v-5h4v5"/>'),
+    chart: P('<path d="M4 20h16M7 16v-4M12 16V8M17 16v-7"/>'),
+  };
+  const icon = (n) => ICONS[n] || "";
+  document.querySelectorAll("[data-icon]").forEach((el) => (el.innerHTML = icon(el.dataset.icon)));
+
   // ------------------------------------------------------------------ i18n
   const I18N = {
-    en: { brand: "Property Concierge", newChat: "New conversation", knowledge: "Knowledge base", projects: "DarGlobal projects",
-      listings: "Wasalt listings", pages: "Pages indexed", chunks: "Search chunks", engine: "Engine",
-      retrieval: "Hybrid retrieval · BM25 + n-grams + semantic", filters: "Structured listing filters (EN/AR)",
-      eyebrow: "DarGlobal developments · Wasalt marketplace", hero: "How can I help you find your next property?",
-      lede: "Ask about DarGlobal's branded residences across the Gulf and Europe, or search Wasalt listings in Saudi Arabia by city, budget and bedrooms. Facts are cited to their source pages.",
-      placeholder: "Ask about a project, a city, a budget…", disclaimer: "Answers are generated from publicly available website data and may be out of date. Not financial advice.",
-      thinking: "Searching DarGlobal & Wasalt data", sources: "Sources", copy: "Copy", copied: "Copied", cached: "cached",
-      matches: (n) => `${n} matching listing${n === 1 ? "" : "s"}`, relaxed: "closest matches (filters relaxed)", median: "median",
-      view: "View on Wasalt", bed: "bd", bath: "ba", sqm: "sqm", onRequest: "Price on request", stopped: "Stopped.",
-      scraped: (d) => `Data scraped ${d}.`, seed: "Showing a bundled seed snapshot — run the scraper for full data.",
-      noKey: "No API key configured — retrieval-only mode", lang: "العربية", rateLimited: "You're sending messages quickly — please wait a moment.",
-      netErr: "Connection problem — please try again.", refreshing: "Live refresh in progress…", refreshed: (d) => `Live data refreshed ${d}.` },
-    ar: { brand: "مستشار العقارات", newChat: "محادثة جديدة", knowledge: "قاعدة المعرفة", projects: "مشاريع دار جلوبال",
-      listings: "عروض وصلت", pages: "صفحات مفهرسة", chunks: "مقاطع البحث", engine: "المحرك",
-      retrieval: "استرجاع هجين · BM25 + مقاطع حرفية + دلالي", filters: "فلاتر عقارية منظمة (عربي/إنجليزي)",
-      eyebrow: "مشاريع دار جلوبال · سوق وصلت", hero: "كيف أساعدك في العثور على عقارك القادم؟",
-      lede: "اسأل عن مساكن دار جلوبال الفاخرة في الخليج وأوروبا، أو ابحث في عروض وصلت في السعودية حسب المدينة والميزانية وعدد الغرف. المعلومات موثقة بروابط مصادرها.",
-      placeholder: "اسأل عن مشروع أو مدينة أو ميزانية…", disclaimer: "الإجابات مولدة من بيانات المواقع العامة وقد لا تكون محدثة. ليست نصيحة مالية.",
-      thinking: "جارٍ البحث في بيانات دار جلوبال ووصلت", sources: "المصادر", copy: "نسخ", copied: "تم النسخ", cached: "من الذاكرة",
-      matches: (n) => `${n} عرض مطابق`, relaxed: "أقرب النتائج (تم تخفيف الفلاتر)", median: "الوسيط",
-      view: "عرض على وصلت", bed: "غرف", bath: "حمام", sqm: "م²", onRequest: "السعر عند الطلب", stopped: "تم الإيقاف.",
-      scraped: (d) => `تم جمع البيانات ${d}.`, seed: "يتم عرض بيانات تجريبية مضمنة — شغّل أداة الجمع للحصول على البيانات الكاملة.",
-      noKey: "لا يوجد مفتاح API — وضع الاسترجاع فقط", lang: "English", rateLimited: "ترسل الرسائل بسرعة — يرجى الانتظار قليلاً.",
-      netErr: "مشكلة في الاتصال — حاول مرة أخرى.", refreshing: "جارٍ تحديث البيانات…", refreshed: (d) => `تم تحديث البيانات ${d}.` },
+    en: {
+      tagline: "Property assistant · DarGlobal & Wasalt", newChat: "New chat",
+      hello: "Hi, I'm Haya", lede: "Ask me about DarGlobal's branded residences, or find homes for sale and rent on Wasalt across Saudi Arabia, in English or Arabic.",
+      placeholder: "Ask Haya about a project, a city or a budget…",
+      disclaimer: "Haya can make mistakes. Listing prices come from Wasalt and may have changed. Not financial advice.",
+      thinking: "Looking through DarGlobal & Wasalt…", copy: "Copy", copied: "Copied", retry: "Regenerate",
+      listings: (n) => `${n.toLocaleString("en-US")} matching listing${n === 1 ? "" : "s"}`, relaxed: "Closest matches", median: "Median",
+      bed: (n) => `${n} bed${n === 1 ? "" : "s"}`, bath: (n) => `${n} bath${n === 1 ? "" : "s"}`, sqm: "m²", onRequest: "Price on request",
+      sale: "For sale", rent: "For rent", under: "Under", over: "Over", min: "Min", stopped: "Stopped.",
+      limited: "Limited mode - AI summary unavailable, showing results directly",
+      fresh: (d) => `Based on public pages of darglobal.co.uk and wasalt.sa · updated ${d}`,
+      rateLimited: "You're sending messages quickly - please wait a moment.", netErr: "Connection problem - please try again.",
+      starters: [
+        ["tower", "DarGlobal in Saudi Arabia", "Which DarGlobal projects are in Saudi Arabia?", "Which DarGlobal projects are in Saudi Arabia?"],
+        ["globe", "Trump Tower Jeddah", "Completion date, floors and unit types", "Tell me about Trump Tower Jeddah"],
+        ["home", "Villas in Riyadh under 2M", "Live Wasalt listings with photos", "Show me villas for sale in Riyadh under 2 million SAR", "w"],
+        ["chart", "Riyadh price check", "Median villa price on Wasalt", "What is the median villa price in Riyadh?", "w"],
+      ],
+    },
+    ar: {
+      tagline: "مساعدتك العقارية · دار جلوبال ووصلت", newChat: "محادثة جديدة",
+      hello: "مرحباً، أنا هيا", lede: "اسألني عن مساكن دار جلوبال الفاخرة، أو ابحث عن عقارات للبيع والإيجار على وصلت في أنحاء السعودية - بالعربية أو الإنجليزية.",
+      placeholder: "اسأل هيا عن مشروع أو مدينة أو ميزانية…",
+      disclaimer: "قد تخطئ هيا أحياناً. أسعار العروض من وصلت وقد تكون تغيّرت. ليست نصيحة مالية.",
+      thinking: "أبحث في دار جلوبال ووصلت…", copy: "نسخ", copied: "تم النسخ", retry: "إعادة التوليد",
+      listings: (n) => `${n.toLocaleString("ar-SA")} عرض مطابق`, relaxed: "أقرب النتائج", median: "الوسيط",
+      bed: (n) => `${n} غرف`, bath: (n) => `${n} حمام`, sqm: "م²", onRequest: "السعر عند الطلب",
+      sale: "للبيع", rent: "للإيجار", under: "أقل من", over: "أكثر من", min: "من", stopped: "تم الإيقاف.",
+      limited: "وضع محدود - الملخص الذكي غير متاح، تُعرض النتائج مباشرة",
+      fresh: (d) => `من الصفحات العامة لموقعي دار جلوبال ووصلت · آخر تحديث ${d}`,
+      rateLimited: "ترسل الرسائل بسرعة - يرجى الانتظار قليلاً.", netErr: "مشكلة في الاتصال - حاول مرة أخرى.",
+      starters: [
+        ["tower", "دار جلوبال في السعودية", "المشاريع في الرياض وجدة ووادي صفار", "ما هي مشاريع دار جلوبال في السعودية؟"],
+        ["globe", "برج ترامب جدة", "موعد التسليم وعدد الطوابق والوحدات", "أخبرني عن برج ترامب جدة"],
+        ["home", "فلل في الرياض بأقل من 2 مليون", "عروض وصلت مع الصور", "أرني فلل للبيع في الرياض بأقل من 2 مليون ريال", "w"],
+        ["chart", "أسعار الرياض", "متوسط سعر الفلل على وصلت", "ما متوسط سعر الفلل في الرياض؟", "w"],
+      ],
+    },
   };
   let lang = store.get("lang", "en");
   const t = (k, ...a) => { const v = I18N[lang][k] ?? I18N.en[k]; return typeof v === "function" ? v(...a) : v; };
@@ -41,13 +74,12 @@
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
     document.querySelectorAll("[data-i18n-ph]").forEach((el) => (el.placeholder = t(el.dataset.i18nPh)));
-    $("#langToggle").textContent = t("lang");
-    renderHealth();
+    $("#langToggle").textContent = lang === "ar" ? "EN" : "ع";
   }
 
   // ----------------------------------------------------------------- theme
   let theme = store.get("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  const applyTheme = () => { document.documentElement.dataset.theme = theme; $("#themeToggle").textContent = theme === "dark" ? "☀" : "☾"; };
+  const applyTheme = () => { document.documentElement.dataset.theme = theme; $("#themeToggle").innerHTML = icon(theme === "dark" ? "sun" : "moon"); };
 
   // -------------------------------------------------------------- markdown
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -82,7 +114,7 @@
         const head = cells(line); i += 2;
         let rows = "";
         while (i < lines.length && lines[i].includes("|") && lines[i].trim()) { rows += "<tr>" + cells(lines[i]).map((c) => `<td>${inline(c)}</td>`).join("") + "</tr>"; i++; }
-        html += `<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`; continue;
+        html += `<div class="tbl"><table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`; continue;
       }
       if (/^\s*>/.test(line)) {
         const buf = [];
@@ -109,51 +141,51 @@
   }
 
   // ------------------------------------------------------------- formatting
-  const nf = () => new Intl.NumberFormat(lang === "ar" ? "ar-SA" : "en-US", { maximumFractionDigits: 0 });
+  const loc = () => (lang === "ar" ? "ar-SA" : "en-US");
+  const nf = (v) => new Intl.NumberFormat(loc(), { maximumFractionDigits: 0 }).format(v);
+  const money = (v) => (v >= 1e6 ? `${(v / 1e6).toLocaleString(loc(), { maximumFractionDigits: 2 })}M` : v >= 1e3 ? `${Math.round(v / 1e3).toLocaleString(loc())}K` : nf(v));
   function price(v, period) {
     if (v == null) return t("onRequest");
-    const s = v >= 1e6 ? `${(v / 1e6).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { maximumFractionDigits: 2 })}M` : nf().format(v);
-    return `SAR ${s}` + (period ? ` <small>/ ${esc(period)}</small>` : "");
+    const p = { yearly: "/yr", monthly: "/mo", weekly: "/wk", daily: "/day" }[period] || (period ? `/${period}` : "");
+    return `SAR ${money(v)}` + (p ? ` <small>${esc(p)}</small>` : "");
+  }
+  function filterPills(f) {
+    const out = [];
+    if (f.property_type) out.push(f.property_type);
+    if (f.purpose) out.push(t(f.purpose) || f.purpose);
+    if (f.district) out.push(f.district);
+    if (f.city) out.push(f.city);
+    if (f.bedrooms_exact != null) out.push(t("bed", f.bedrooms_exact));
+    if (f.bedrooms_min != null) out.push(`${f.bedrooms_min}+ ${lang === "ar" ? "غرف" : "beds"}`);
+    if (f.price_max) out.push(`${t("under")} SAR ${money(f.price_max)}`);
+    if (f.price_min) out.push(`${t("over")} SAR ${money(f.price_min)}`);
+    if (f.area_min) out.push(`${t("min")} ${nf(f.area_min)} ${t("sqm")}`);
+    return out.map((x) => `<span class="pill">${esc(x)}</span>`).join("");
   }
 
-  // ----------------------------------------------------------------- health
-  let health = null;
-  async function loadHealth() {
-    try { health = await (await fetch("/api/health")).json(); renderHealth(); } catch {}
+  // ----------------------------------------------------------------- welcome
+  let freshDate = "";
+  async function loadFreshness() {
+    try {
+      const h = await (await fetch("/api/health")).json();
+      const d = h.refresh?.last_status === "ok" && h.refresh?.last_run ? h.refresh.last_run : h.data?.scraped_at;
+      if (d) { freshDate = d; const el = $("#fresh"); if (el) el.textContent = t("fresh", fmtDate(d)); }
+    } catch {}
   }
-  function renderHealth() {
-    if (!health) return;
-    const d = health.data;
-    $("#statProjects").textContent = nf().format(d.projects);
-    $("#statListings").textContent = nf().format(d.listings);
-    $("#statPages").textContent = nf().format(d.pages);
-    $("#statChunks").textContent = nf().format(d.chunks);
-    const r = health.refresh || {};
-    let note = "";
-    if (r.running) note = t("refreshing");
-    else if (r.last_status === "ok" && r.last_run) note = t("refreshed", new Date(r.last_run).toLocaleString());
-    else if (d.scraped_at) note = t("scraped", new Date(d.scraped_at).toLocaleDateString());
-    if (Object.values(d.data_source || {}).includes("seed")) note += " " + t("seed");
-    $("#dataNote").textContent = note.trim();
-    const dot = $("#llmDot");
-    if (health.llm.configured) {
-      dot.className = "dot ok";
-      $("#llmModel").textContent = `${health.llm.candidates[0] || "openrouter/free"} (+${Math.max(0, health.llm.candidates.length - 1)} fallbacks)`;
-    } else { dot.className = "dot warn"; $("#llmModel").textContent = t("noKey"); }
-  }
-
-  // ----------------------------------------------------------- suggestions
-  const SUGG_ICONS = ["◆", "◈", "✦", "⌂", "≈", "ع"];
-  async function loadSuggestions() {
-    let list = [];
-    try { list = (await (await fetch(`/api/suggestions?lang=${lang}`)).json()).suggestions; } catch {}
-    $("#suggestions").innerHTML = list.map((s, i) =>
-      `<button class="sugg ${/wasalt|villa|price|listing|rent|sale/i.test(s) ? "w" : ""}" data-q="${esc(s)}"><span class="sugg-ic">${SUGG_ICONS[i % 6]}</span><span>${esc(s)}</span></button>`).join("");
+  const fmtDate = (d) => new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short", year: "numeric" });
+  function renderWelcome() {
+    thread.innerHTML = `<section class="welcome" id="welcome">
+      <div class="logo" aria-hidden="true">H</div>
+      <h1>${esc(t("hello"))}</h1>
+      <p class="lede">${esc(t("lede"))}</p>
+      <div class="starters">${t("starters").map(([ic, title, desc, q, w]) =>
+        `<button type="button" class="starter ${w || ""}" data-q="${esc(q)}"><span class="sic">${icon(ic)}</span><span><b>${esc(title)}</b><span class="d">${esc(desc)}</span></span></button>`).join("")}</div>
+      <p class="fresh" id="fresh">${freshDate ? esc(t("fresh", fmtDate(freshDate))) : ""}</p>
+    </section>`;
   }
 
   // ------------------------------------------------------------------- chat
-  let history = [];
-  let controller = null;
+  let history = [], controller = null;
 
   function scrollDown(force) {
     const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160;
@@ -169,45 +201,74 @@
   }
   function addBot() {
     const el = document.createElement("div");
-    el.className = "msg";
-    el.innerHTML = `<div class="avatar" aria-hidden="true">×</div><div class="bot">
+    el.className = "msg bot-msg";
+    el.innerHTML = `<div class="avatar" aria-hidden="true">H</div><div class="bot">
       <div class="thinking"><i></i><i></i><i></i><span>${esc(t("thinking"))}</span></div>
-      <div class="answer"></div><div class="listings" hidden></div><details class="sources" hidden></details><div class="meta" hidden></div></div>`;
+      <div class="answer"></div><div class="listings" hidden></div><div class="sources" hidden></div><div class="actions" hidden></div></div>`;
     thread.appendChild(el); scrollDown(true);
     return el;
   }
 
   function renderListings(box, data) {
     if (!data || !data.items || !data.items.length) return;
-    const f = Object.entries(data.filters || {}).map(([k, v]) => `<span class="pill">${esc(k.replace(/_/g, " "))}: ${esc(Array.isArray(v) ? v.join(", ") : typeof v === "number" && v > 9999 ? nf().format(v) : v)}</span>`).join("");
-    const stats = data.stats && data.stats.median_price ? `<span class="pill">${t("median")} ${price(data.stats.median_price)}</span>` : "";
-    const relaxed = data.relaxed && data.relaxed.length ? `<span class="pill warn">${esc(t("relaxed"))}</span>` : "";
-    box.innerHTML = `<div class="listings-head"><strong>${esc(t("matches", data.total))}</strong>${relaxed}${stats}${f}</div>
+    const median = data.stats?.median_price ? `<span class="pill">${t("median")} SAR ${money(data.stats.median_price)}</span>` : "";
+    const relaxed = data.relaxed?.length ? `<span class="pill warn">${esc(t("relaxed"))}</span>` : "";
+    box.innerHTML = `<div class="listings-head"><strong>${esc(t("listings", data.total))}</strong>${filterPills(data.filters || {})}${median}${relaxed}</div>
       <div class="cards">${data.items.map((l) => {
         const area = l.built_area_sqm || l.land_area_sqm;
-        return `<a class="card" id="L${l.n}" href="${esc(l.url)}" target="_blank" rel="noopener" data-ref="L${l.n}">
-          <div class="card-top"><span class="card-tag">L${l.n} · ${esc((l.property_type || "Property") + " · " + (l.purpose || ""))}</span><span>${esc(l.building_year || "")}</span></div>
-          <div class="card-price">${price(l.price_sar, l.rent_period)}</div>
+        const img = /^https:\/\//.test(l.image || "") ? `<img src="${esc(l.image)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+        const tag = [l.property_type, l.purpose && t(l.purpose)].filter(Boolean).join(" · ");
+        return `<a class="card" href="${esc(l.url)}" target="_blank" rel="noopener" data-ref="L${l.n}">
+          <div class="card-img">${icon("home")}${img}<span class="card-tag">L${l.n}${tag ? " · " + esc(tag) : ""}</span></div>
+          <div class="card-body"><div class="card-price">${price(l.price_sar, l.rent_period)}</div>
           <div class="card-loc">${esc([l.district, l.city].filter(Boolean).join(", "))}</div>
-          <div class="card-facts">${l.bedrooms != null ? `<span>${l.bedrooms} ${t("bed")}</span>` : ""}${l.bathrooms != null ? `<span>${l.bathrooms} ${t("bath")}</span>` : ""}${area ? `<span>${nf().format(area)} ${t("sqm")}</span>` : ""}</div>
-          <div class="card-title">${esc(l.title || "")}</div></a>`;
+          <div class="card-facts">${l.bedrooms != null ? `<span>${esc(t("bed", l.bedrooms))}</span>` : ""}${l.bathrooms != null ? `<span>${esc(t("bath", l.bathrooms))}</span>` : ""}${area ? `<span>${nf(area)} ${t("sqm")}</span>` : ""}${l.building_year ? `<span>${esc(l.building_year)}</span>` : ""}</div></div></a>`;
       }).join("")}</div>`;
     box.hidden = false;
   }
   function renderSources(box, sources) {
-    if (!sources || !sources.length) return;
-    box.innerHTML = `<summary>${esc(t("sources"))} (${sources.length})</summary><div class="src-list">${sources.map((s) =>
-      `<a class="src" data-ref="${s.n}" href="${esc(s.url)}" target="_blank" rel="noopener"><span class="src-n">${s.n}</span><span><span class="site ${esc(s.site)}">${esc(s.site === "wasalt" ? "Wasalt" : "DarGlobal")}</span><span class="src-t">${esc(s.title)}</span><div class="src-s">${esc(s.snippet)}</div></span></a>`).join("")}</div>`;
+    if (!sources.length) return;
+    // one chip per page: [1] and [2] are often two excerpts of the same URL
+    const byUrl = new Map();
+    for (const s of sources) {
+      const g = byUrl.get(s.url) || { ...s, ns: [] }; g.ns.push(s.n); byUrl.set(s.url, g);
+    }
+    box.innerHTML = [...byUrl.values()].map((s) => {
+      const site = s.site === "wasalt" ? "Wasalt" : "DarGlobal";
+      return `<a class="src ${esc(s.site)}" data-refs="${s.ns.join(" ")}" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.snippet || "")}">
+        <span class="src-n">${s.ns.join("·")}</span><span class="src-site">${site}</span><span class="src-t">${esc(s.title)}</span></a>`;
+    }).join("");
     box.hidden = false;
   }
+  function renderActions(el, answer, question, degraded) {
+    const box = $(".actions", el);
+    box.innerHTML = `<button type="button" class="act copy" title="${esc(t("copy"))}" aria-label="${esc(t("copy"))}">${icon("copy")}</button>
+      <button type="button" class="act retry" title="${esc(t("retry"))}" aria-label="${esc(t("retry"))}">${icon("retry")}</button>
+      ${degraded ? `<span class="note">${esc(t("limited"))}</span>` : ""}`;
+    box.hidden = false;
+    $(".copy", box).onclick = (ev) => {
+      navigator.clipboard?.writeText(answer.replace(/\[(L?\d{1,2})\]/g, ""));
+      const b = ev.currentTarget; b.innerHTML = icon("check"); setTimeout(() => (b.innerHTML = icon("copy")), 1200);
+    };
+    $(".retry", box).onclick = () => regenerate(el, question);
+  }
+  function regenerate(el, question) {
+    if (controller) return;
+    // drop this exchange from history (and anything after it), then ask again
+    const idx = history.findLastIndex((m) => m.role === "user" && m.content === question);
+    if (idx >= 0) history = history.slice(0, idx);
+    let next = el.nextElementSibling;
+    while (next) { const n = next.nextElementSibling; next.remove(); next = n; }
+    el.remove();
+    send(question, { regenerate: true });
+  }
 
-  async function send(text) {
+  async function send(text, opts = {}) {
     text = text.trim();
     if (!text || controller) return;
-    input.value = ""; autosize();
-    addUser(text);
+    if (!opts.regenerate) { input.value = ""; autosize(); addUser(text); }
     const el = addBot();
-    const ansEl = el.querySelector(".answer"), thinking = el.querySelector(".thinking");
+    const ansEl = $(".answer", el), thinking = $(".thinking", el);
     let answer = "", meta = {}, raf = 0, sources = [];
     const paint = () => { raf = 0; ansEl.innerHTML = md(answer); ansEl.classList.add("cursor"); scrollDown(); };
 
@@ -215,9 +276,9 @@
     setBusy(true);
     try {
       const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: history.slice(-12) }), signal: controller.signal });
+        body: JSON.stringify({ message: text, history: history.slice(-12), regenerate: !!opts.regenerate }), signal: controller.signal });
       if (res.status === 429) throw new Error(t("rateLimited"));
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) throw new Error(t("netErr"));
       const reader = res.body.getReader(), dec = new TextDecoder();
       let buf = "";
       for (;;) {
@@ -230,45 +291,33 @@
           const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("\n");
           if (!data) continue;
           let ev; try { ev = JSON.parse(data); } catch { continue; }
-          if (ev.type === "meta") {
-            renderListings(el.querySelector(".listings"), ev.listings);
-            sources = ev.sources || [];  // rendered at the end: only the ones the answer cites
-          } else if (ev.type === "delta") {
-            thinking.remove?.(); answer += ev.text; if (!raf) raf = requestAnimationFrame(paint);
-          } else if (ev.type === "done") { meta = ev; }
-          else if (ev.type === "error") { throw new Error(ev.message); }
+          if (ev.type === "meta") { renderListings($(".listings", el), ev.listings); sources = ev.sources || []; }
+          else if (ev.type === "delta") { thinking.remove(); answer += ev.text; if (!raf) raf = requestAnimationFrame(paint); }
+          else if (ev.type === "done") meta = ev;
+          else if (ev.type === "error") throw new Error(t("netErr"));
         }
       }
     } catch (e) {
-      thinking.remove?.();
+      thinking.remove();
       if (e.name === "AbortError") answer += (answer ? "\n\n" : "") + `_${t("stopped")}_`;
       else ansEl.insertAdjacentHTML("afterend", `<p class="error">${esc(e.message === "Failed to fetch" ? t("netErr") : e.message)}</p>`);
     } finally {
       cancelAnimationFrame(raf);
       ansEl.innerHTML = md(answer); ansEl.classList.remove("cursor");
-      // show only sources the answer actually cites ([n]); small talk / general answers cite none
-      const cited = new Set([...answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
-      renderSources(el.querySelector(".sources"), sources.filter((s) => cited.has(s.n)));
+      // only the sources the answer actually cites; small talk / general answers cite none
+      const cited = new Set([...answer.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
+      renderSources($(".sources", el), sources.filter((s) => cited.has(s.n)));
       if (answer) {
         history.push({ role: "user", content: text }, { role: "assistant", content: answer.slice(0, 4000) });
-        const m = el.querySelector(".meta");
-        const secs = meta.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : "";
-        m.innerHTML = `${meta.model ? `<span class="badge ${meta.degraded ? "warn" : ""}">${esc(meta.model)}</span>` : ""}${secs ? `<span>${secs}</span>` : ""}${meta.cached ? `<span class="badge">${t("cached")}</span>` : ""}<button type="button" class="copy">${t("copy")}</button>`;
-        m.hidden = false;
-        m.querySelector(".copy").onclick = (ev) => { navigator.clipboard?.writeText(answer); ev.target.textContent = t("copied"); setTimeout(() => (ev.target.textContent = t("copy")), 1200); };
+        renderActions(el, answer, text, meta.degraded);
       }
       controller = null; setBusy(false); scrollDown();
     }
   }
 
-  function setBusy(b) { stopBtn.hidden = !b; sendBtn.hidden = b; input.disabled = false; if (!b) input.focus(); }
+  function setBusy(b) { stopBtn.hidden = !b; sendBtn.hidden = b; if (!b) { autosize(); input.focus(); } }
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; sendBtn.disabled = !input.value.trim(); }
-  function newChat() {
-    controller?.abort(); history = [];
-    thread.innerHTML = `<div class="welcome" id="welcome"><p class="eyebrow">${esc(t("eyebrow"))}</p><h1>${esc(t("hero"))}</h1><p class="lede">${esc(t("lede"))}</p><div class="suggestions" id="suggestions"></div></div>`;
-    loadSuggestions(); closeMenu(); input.focus();
-  }
-  const closeMenu = () => { $("#sidebar").classList.remove("open"); $("#scrim").classList.remove("show"); };
+  function newChat() { controller?.abort(); history = []; renderWelcome(); input.value = ""; autosize(); input.focus(); }
 
   // ----------------------------------------------------------------- events
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
@@ -276,22 +325,19 @@
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } });
   stopBtn.addEventListener("click", () => controller?.abort());
   thread.addEventListener("click", (e) => {
-    const s = e.target.closest(".sugg"); if (s) return send(s.dataset.q);
+    const s = e.target.closest(".starter"); if (s) return send(s.dataset.q);
     const c = e.target.closest(".cite"); if (!c) return;
     e.preventDefault();
     const bot = c.closest(".bot"), ref = c.dataset.ref;
-    const target = ref.startsWith("L") ? bot.querySelector(`.card[data-ref="${ref}"]`) : bot.querySelector(`.src[data-ref="${ref}"]`);
+    const target = $(ref.startsWith("L") ? `.card[data-ref="${ref}"]` : `.src[data-refs~="${ref}"]`, bot);
     if (!target) return;
-    if (!ref.startsWith("L")) bot.querySelector(".sources").open = true;
     target.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
     target.classList.add("flash"); setTimeout(() => target.classList.remove("flash"), 1200);
   });
-  $("#newChat").onclick = newChat; $("#newChatTop").onclick = newChat;
-  $("#langToggle").onclick = () => { lang = lang === "en" ? "ar" : "en"; store.set("lang", lang); applyLang(); if ($("#welcome")) newChat(); };
+  $("#newChat").onclick = newChat;
+  $(".brand").onclick = (e) => { e.preventDefault(); newChat(); };
+  $("#langToggle").onclick = () => { lang = lang === "en" ? "ar" : "en"; store.set("lang", lang); applyLang(); if ($("#welcome")) renderWelcome(); };
   $("#themeToggle").onclick = () => { theme = theme === "dark" ? "light" : "dark"; store.set("theme", theme); applyTheme(); };
-  $("#menuBtn").onclick = () => { $("#sidebar").classList.add("open"); $("#scrim").classList.add("show"); };
-  $("#scrim").onclick = closeMenu;
 
-  applyTheme(); applyLang(); loadSuggestions(); loadHealth(); autosize();
-  setInterval(loadHealth, 60000);
+  applyTheme(); applyLang(); renderWelcome(); loadFreshness(); autosize();
 })();

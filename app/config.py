@@ -19,7 +19,7 @@ class Settings:
     # Optional explicit model list (comma separated). Empty -> auto-discover free models.
     models: list[str] = field(default_factory=lambda: _list("OPENROUTER_MODELS"))
     app_url: str = field(default_factory=lambda: os.getenv("APP_URL", "https://huggingface.co/spaces"))
-    app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "DarGlobal x Wasalt Property Assistant"))
+    app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "Haya - Property Assistant for DarGlobal & Wasalt"))
 
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("DATA_DIR", str(ROOT / "data"))))
     top_k: int = field(default_factory=lambda: int(os.getenv("TOP_K", "6")))

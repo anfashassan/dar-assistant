@@ -8,6 +8,7 @@ answers therefore come from data, not from the language model.
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 import statistics
 from difflib import SequenceMatcher
 from dataclasses import dataclass, field
@@ -44,7 +45,7 @@ CITY_ALIASES = {
 }
 RENT_WORDS = r"\b(rent|rental|renting|lease|leasing|to let|monthly|yearly)\b|ايجار|للايجار|استئجار"
 SALE_WORDS = r"\b(buy|buying|sale|purchase|own|for sale)\b|للبيع|شراء|بيع|تملك"
-MAX_WORDS = r"(under|below|less than|max(?:imum)?|up to|upto|within|budget(?: of| is)?|cheaper than|no more than|<=?|اقل من|تحت|حد اقصى|بحدود|ميزانيه)"
+MAX_WORDS = r"(under|below|less than|max(?:imum)?|up to|upto|within|(?:my )?budget(?: of| is)?|i (?:only )?have|i can (?:afford|spend|pay)|afford|عندي|معي|cheaper than|no more than|<=?|اقل من|تحت|حد اقصى|بحدود|ميزانيه)"
 MIN_WORDS = r"(over|above|more than|min(?:imum)?|at least|from|starting|>=?|اكثر من|فوق|على الاقل)"
 AMENITIES = {
     "pool": ["pool", "swimming", "مسبح"], "garden": ["garden", "حديقة"], "elevator": ["elevator", "lift", "مصعد"],
@@ -76,6 +77,13 @@ class ListingQuery:
         d.pop("intent", None)
         return d
 
+    def concrete(self) -> bool:
+        """Enough to run a search: a place, a budget, a size, a bedroom count, or a type with
+        sale/rent. "What is Wasalt?" or "how many bedrooms do the villas have?" are not."""
+        return bool(self.city or self.district or self.price_max or self.price_min or self.area_min
+                    or self.bedrooms_exact is not None or self.bedrooms_min is not None
+                    or (self.property_type and self.purpose))
+
     def merged_with(self, newer: "ListingQuery") -> "ListingQuery":
         """Follow-up questions inherit earlier filters unless they override them."""
         out = ListingQuery(**{k: v for k, v in self.__dict__.items()})
@@ -101,9 +109,43 @@ def _money(num: str, unit: str | None) -> float:
 MONEY = r"(?:sar|sr|ريال)?\s*([\d][\d,]*(?:\.\d+)?)\s*(m|mn|mil|millions?|k|thousand|مليون|ملايين|الف|ألف|آلاف|الاف)?\b\s*(?:sar|sr|riyals?|ريال)?"
 
 
-FUZZY_STOPWORDS = {"sale", "rent", "sell", "riyal", "riyals", "million", "millions", "price",
+FUZZY_STOPWORDS = {"same", "some", "near", "nearby", "close", "best", "good", "nice", "more", "less",
+                   "also", "with", "only", "newest", "cheapest", "largest", "biggest", "sale", "rent", "sell", "riyal", "riyals", "million", "millions", "price",
                    "villa", "villas", "house", "homes", "under", "below", "above", "show",
                    "search", "budget", "cheap", "apartment", "apartments", "bedrooms", "bedroom"}
+
+
+ARTICLE = re.compile(r"^(the|al|an|ar|as|ash|at|az|ad|adh|ath|ats|ال)[\s-]+")
+# district names made only of these words are too generic to fuzzy-match ("City Center")
+GENERIC_PLACE = {"city", "center", "centre", "central", "district", "north", "south", "east", "west",
+                 "new", "old", "downtown", "the", "of", "area", "town", "village", "industrial"}
+# number words -> digits, so "three bedroom" / "بثلاث غرف" / "غرفتين" parse like "3 bedroom"
+NUM_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+             "nine": 9, "ten": 10, "single": 1, "double": 2}
+AR_NUM = [("غرفتين", "2 غرف"), ("غرفتان", "2 غرف"), ("غرفة واحدة", "1 غرف"), ("غرفه واحده", "1 غرف")]
+AR_NUM_WORDS = {"ثلاث": 3, "ثلاثة": 3, "ثلاثه": 3, "اربع": 4, "أربع": 4, "اربعة": 4, "أربعة": 4,
+                "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7, "ثمان": 8, "ثماني": 8}
+
+
+_AR_NUM_NORM = {normalize(w): n for w, n in AR_NUM_WORDS.items()}
+_AR_NUM_RE = re.compile(r"(?:ب|و)?(" + "|".join(sorted(map(re.escape, _AR_NUM_NORM), key=len, reverse=True))
+                        + r")\s+(?:غرف|غرفه|غرفة)")
+
+
+TYPE_WORDS = {normalize(w) for ws in TYPE_SYNONYMS.values() for w in ws for w in w.split()} | {
+    "apartment", "apartments", "villa", "villas", "land", "building", "floor", "house", "home", "flat"}
+
+
+def district_core(name: str) -> str:
+    return ARTICLE.sub("", normalize(name or "").strip()).strip()
+
+
+def _number_words(t: str) -> str:
+    t = re.sub(r"\b(" + "|".join(NUM_WORDS) + r")([\s-]*)(?=bed|br\b|room)",
+               lambda m: f"{NUM_WORDS[m.group(1)]} ", t)
+    for a, b in AR_NUM:
+        t = t.replace(normalize(a), b)
+    return _AR_NUM_RE.sub(lambda m: f"{_AR_NUM_NORM[m.group(1)]} غرف", t)
 
 
 def parse_query(text: str, known_districts: list[str] | None = None,
@@ -111,6 +153,7 @@ def parse_query(text: str, known_districts: list[str] | None = None,
     q = ListingQuery()
     t = normalize(expand_query(text))
     t = re.sub(r"(\d)\s*,\s*(\d{3})", r"\1,\2", t)
+    t = _number_words(t)
 
     if re.search(RENT_WORDS, t):
         q.purpose = "rent"
@@ -131,12 +174,17 @@ def parse_query(text: str, known_districts: list[str] | None = None,
             break
 
     best, words = "", re.findall(r"[a-z\u0600-\u06FF]+", t)
+    city_words = {normalize(w) for ws in cities.values() for w in ws} | {normalize(c) for c in cities}
     for d in known_districts or []:
         nd = normalize(d)
-        core = re.sub(r"^(al|al-|ال)\s*", "", nd).strip()
+        core = district_core(d)
+        if nd in city_words or core in city_words:  # "Riyadh" / "Al-Riyadh" districts never match a city word
+            continue
+        if not core or set(core.replace("-", " ").split()) <= GENERIC_PLACE | TYPE_WORDS:
+            continue   # "City Center", "The Apartment" ... are not something a user names as a place
         if len(core) < 4:
             continue
-        hit = re.search(rf"\b(al[\s-]?)?{re.escape(core)}\b", t)
+        hit = re.search(rf"\b((al|an|ar|as|ash|at|az|ad)[\s-]?)?{re.escape(core)}\b", t)
         if not hit and len(core) >= 5:  # fuzzy: "yasmin" ~ "yasmeen", "malqa" ~ "malga"
             n = len(core.split())
             grams = [" ".join(words[i:i + n]) for i in range(len(words) - n + 1)]
@@ -186,13 +234,13 @@ def parse_query(text: str, known_districts: list[str] | None = None,
         if any(normalize(w) in t for w in words):
             q.amenities.append(canon)
 
-    if re.search(r"cheapest|lowest price|most affordable|ارخص|الارخص", t):
+    if re.search(r"cheapest|cheaper|lowest price|most affordable|less expensive|ارخص|الارخص", t):
         q.sort = "price_asc"
     elif re.search(r"most expensive|luxur|highest price|اغلى", t):
         q.sort = "price_desc"
-    elif re.search(r"largest|biggest|most space|اكبر", t):
+    elif re.search(r"largest|biggest|bigger|larger|most space|اكبر", t):
         q.sort = "area_desc"
-    elif re.search(r"newest|new build|latest|احدث", t):
+    elif re.search(r"newest|newer|new build|latest|احدث", t):
         q.sort = "year_desc"
 
     q.intent = bool(re.search(LISTING_INTENT, t)) or any(
@@ -213,8 +261,8 @@ def _match(l: dict, q: ListingQuery, *, skip: set[str]) -> bool:
     if q.city and "city" not in skip and _norm(q.city).replace("al ", "") not in _norm(l.get("city")):
         return False
     if q.district and "district" not in skip:
-        core = re.sub(r"^(al|al-)\s*", "", _norm(q.district))
-        if core not in _norm(l.get("district")) and core not in _norm(l.get("title")):
+        core = district_core(q.district)
+        if core not in district_core(l.get("district")) and core not in _norm(l.get("title")):
             return False
     beds = l.get("bedrooms")
     if q.bedrooms_exact is not None and "bedrooms" not in skip and beds != q.bedrooms_exact:
@@ -278,8 +326,31 @@ def search_listings(listings: list[dict], q: ListingQuery, limit: int = 6) -> Li
         found.sort(key=lambda l: (l.get("price_sar") is None, l.get("price_sar") or 0))
 
     prices = [l["price_sar"] for l in found if l.get("price_sar")]
+    picked = _diverse(found, limit, spread=bool(q.price_max) and not key)
     stats = {}
     if prices:
         stats = {"count": len(found), "median_price": statistics.median(prices),
                  "min_price": min(prices), "max_price": max(prices)}
-    return ListingResult(q, found[:limit], len(found), relaxed, stats)
+    return ListingResult(q, picked, len(found), relaxed, stats)
+
+
+def _diverse(found: list[dict], limit: int, spread: bool = False, per_district: int = 2) -> list[dict]:
+    """Pick `limit` results that show real choice: at most `per_district` per district and,
+    for budget questions, candidates spread across the whole price range instead of six
+    near-identical listings right at the ceiling (seen live: 6 x SAR 2.0M in one district)."""
+    pool = found
+    if spread and len(found) > limit * 3:
+        step = len(found) / (limit * 3)
+        sample = [found[int(i * step)] for i in range(limit * 3)]
+        # interleave so the first picks already span the range: top, middle, bottom, ...
+        pool = sample[0::3] + sample[1::3] + sample[2::3]
+        pool += [l for l in found if l not in pool]
+    out, per = [], defaultdict(int)
+    for l in pool:
+        d = (l.get("district") or "").lower()
+        if per[d] < per_district:
+            out.append(l); per[d] += 1
+            if len(out) == limit:
+                return out
+    out += [l for l in pool if l not in out][: limit - len(out)]
+    return out
