@@ -1,0 +1,24 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t dar-assistant .
+      - name: smoke test
+        run: |
+          docker run -d -p 7860:7860 --name app dar-assistant
+          for i in $(seq 1 30); do curl -sf localhost:7860/api/health && break; sleep 2; done
+          curl -sf localhost:7860/api/health | grep '"status":"ok"'
+          curl -sf -X POST localhost:7860/api/chat/sync -H 'Content-Type: application/json' \
+               -d '{"message":"Tell me about Trump Tower Jeddah"}' | grep -i "trump"

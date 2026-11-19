@@ -1,0 +1,24 @@
+{
+  "scraped_at": "2026-11-18T20:10:00+00:00",
+  "duration_s": 3564.8,
+  "pages": 1709,
+  "pages_by_type": {
+    "darglobal:project": 38,
+    "darglobal:page": 76,
+    "darglobal:partner": 11,
+    "darglobal:news": 68,
+    "darglobal:blog": 209,
+    "wasalt:page": 807,
+    "wasalt:blog": 500
+  },
+  "projects": 38,
+  "listings": 3384,
+  "http": {
+    "requests": 10,
+    "ok": 1,
+    "errors": 0,
+    "blocked_by_robots": 1,
+    "circuit_open": 408,
+    "challenged": 9
+  }
+}

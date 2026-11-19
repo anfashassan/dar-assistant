@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8
+# optional: headless rendering for JS-only pages (python -m scraper.run --render)
+# playwright>=1.44  &&  playwright install chromium

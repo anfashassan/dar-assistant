@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    image: dar-assistant:latest
+    ports:
+      - "7860:7860"
+    env_file: .env
+    restart: unless-stopped
+
+  # one-off scraper: docker compose run --rm scraper
+  scraper:
+    image: dar-assistant:latest
+    profiles: ["tools"]
+    user: root
+    command: ["python", "-m", "scraper.run", "--out", "data/raw"]
+    volumes:
+      - ./data:/app/data
