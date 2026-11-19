@@ -13,6 +13,7 @@
     plus: P('<path d="M12 5v14M5 12h14"/>'),
     send: P('<path d="M5 12h14M13 6l6 6-6 6"/>'),
     stop: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+    mic: P('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
     sun: P('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
     moon: P('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
     copy: P('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>'),
@@ -37,6 +38,7 @@
       listings: (n) => `${n.toLocaleString("en-US")} matching listing${n === 1 ? "" : "s"}`, relaxed: "Closest matches", median: "Median",
       bed: (n) => `${n} bed${n === 1 ? "" : "s"}`, bath: (n) => `${n} bath${n === 1 ? "" : "s"}`, sqm: "m²", onRequest: "Price on request",
       sale: "For sale", rent: "For rent", under: "Under", over: "Over", min: "Min", stopped: "Stopped.",
+      speak: "Speak (English)", listening: "Listening…", micBlocked: "Microphone access is blocked. Allow it in your browser settings.",
       limited: "Limited mode - AI summary unavailable, showing results directly",
       verified: (n) => `${n} figure${n === 1 ? "" : "s"} checked against sources`,
       verifiedTip: "Every price and year in this answer appears in the cited sources",
@@ -59,6 +61,7 @@
       listings: (n) => `${n.toLocaleString("ar-SA")} عرض مطابق`, relaxed: "أقرب النتائج", median: "الوسيط",
       bed: (n) => `${n} غرف`, bath: (n) => `${n} حمام`, sqm: "م²", onRequest: "السعر عند الطلب",
       sale: "للبيع", rent: "للإيجار", under: "أقل من", over: "أكثر من", min: "من", stopped: "تم الإيقاف.",
+      speak: "تحدث (العربية)", listening: "أستمع…", micBlocked: "تم حظر الميكروفون. اسمح به من إعدادات المتصفح.",
       limited: "وضع محدود - الملخص الذكي غير متاح، تُعرض النتائج مباشرة",
       verified: (n) => `تم التحقق من ${n} أرقام من المصادر`,
       verifiedTip: "كل سعر وسنة في هذه الإجابة موجودة في المصادر",
@@ -81,6 +84,8 @@
     document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
     document.querySelectorAll("[data-i18n-ph]").forEach((el) => (el.placeholder = t(el.dataset.i18nPh)));
     $("#langToggle").textContent = lang === "ar" ? "EN" : "ع";
+    $("#micBtn").title = t("speak");
+    $("#micBtn").setAttribute("aria-label", t("speak"));
   }
 
   // ----------------------------------------------------------------- theme
@@ -333,8 +338,42 @@
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; sendBtn.disabled = !input.value.trim(); }
   function newChat() { controller?.abort(); history = []; renderWelcome(); input.value = ""; autosize(); input.focus(); }
 
+  // ------------------------------------------------------------------ voice
+  // Browser speech recognition (Chrome, Edge, Safari). The text goes into the box for editing;
+  // nothing is sent until the user sends it.
+  const micBtn = $("#micBtn");
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+  function showTip(msg) {
+    const d = $(".disclaimer");
+    d.textContent = msg; d.classList.add("warn");
+    setTimeout(() => { d.textContent = t("disclaimer"); d.classList.remove("warn"); }, 5000);
+  }
+  function startListening() {
+    rec = new Recognition();
+    rec.lang = lang === "ar" ? "ar-SA" : "en-US";
+    rec.interimResults = true;
+    const typed = input.value.trim();
+    rec.onresult = (e) => {
+      const spoken = [...e.results].map((r) => r[0].transcript).join("");
+      input.value = (typed ? typed + " " : "") + spoken;
+      autosize();
+    };
+    rec.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") showTip(t("micBlocked")); };
+    rec.onend = () => {
+      rec = null; micBtn.classList.remove("rec"); input.placeholder = t("placeholder");
+      input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+    };
+    rec.start();
+    micBtn.classList.add("rec"); input.placeholder = t("listening");
+  }
+  if (Recognition) {
+    micBtn.hidden = false;
+    micBtn.onclick = () => (rec ? rec.stop() : startListening());
+  }
+
   // ----------------------------------------------------------------- events
-  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
+  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); rec?.stop(); send(input.value); });
   input.addEventListener("input", autosize);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } });
   stopBtn.addEventListener("click", () => controller?.abort());

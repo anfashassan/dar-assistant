@@ -167,13 +167,18 @@ html[dir="rtl"] .composer-box { padding: 8px 16px 8px 8px; }
 .send:disabled { opacity: .3; cursor: default; }
 .send:not(:disabled):active { transform: scale(.94); }
 .stop { background: var(--surface-2); border: 1px solid var(--line-2); }
+.mic { color: var(--ink-2); }
+.mic:hover { background: var(--surface-2); color: var(--ink); }
+.mic.rec { background: #d92d20; color: #fff; animation: pulse 1.4s infinite; }
 .round .ic { width: 17px; height: 17px; }
 html[dir="rtl"] .send .ic { transform: scaleX(-1); }
 .disclaimer { max-width: var(--w); margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--ink-3); }
+.disclaimer.warn { color: var(--danger); }
 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes flash { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--gold); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, .45); } 50% { box-shadow: 0 0 0 7px rgba(217, 45, 32, 0); } }
 
 @media (max-width: 640px) {
   .topbar { padding: 10px 14px; }

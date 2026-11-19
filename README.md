@@ -94,6 +94,10 @@ flowchart LR
 - **Grounding**: facts about DarGlobal and Wasalt must come from the sources and are cited.
   General questions get a short general answer. Text from scraped pages is treated as data,
   not instructions.
+- **Voice input** uses the browser's speech recognition (English or Arabic, following the UI
+  language). The text lands in the input box for editing; nothing is sent automatically. Chrome
+  sends the audio to Google's speech service, Safari to Apple's; the button is hidden where the
+  browser has no support (Firefox).
 - **Figure check** (`app/verify.py`): after each answer, every SAR amount and year is matched
   against the sources the model was given (rounding allowed, Arabic digits included). The UI
   shows "6 figures checked against sources", or a warning listing any figure it can't find.
