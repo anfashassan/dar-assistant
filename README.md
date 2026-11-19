@@ -15,7 +15,7 @@ A chatbot for questions about DarGlobal projects and Wasalt property listings, i
 Arabic. It answers from data scraped from darglobal.co.uk and wasalt.sa, uses a free model
 through OpenRouter, and runs as a Docker container on Hugging Face Spaces.
 
-**Live:** https://anfashassan-dar-assistant.hf.space  ·  API docs: [`/docs`](https://anfashassan-dar-assistant.hf.space/docs)
+**Live:** https://anfashassan-dar-assistant.hf.space  ·  Product overview: [`/overview`](https://anfashassan-dar-assistant.hf.space/overview) ([PDF](docs/Haya-product-overview.pdf))  ·  API docs: [`/docs`](https://anfashassan-dar-assistant.hf.space/docs)
 
 ![Answer with listing cards](docs/answer.png)
 

@@ -21,6 +21,7 @@ body { background: var(--bg); color: var(--ink); font: 15.5px/1.65 var(--sans); 
 html[lang="ar"] body { font-family: var(--arabic); font-size: 16px; }
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
 a { color: inherit; }
+a.ghost { text-decoration: none; }
 .ic { display: inline-flex; width: 18px; height: 18px; flex: none; }
 .ic svg { width: 100%; height: 100%; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 8px; }
@@ -184,6 +185,7 @@ html[dir="rtl"] .send .ic { transform: scaleX(-1); }
   .topbar { padding: 10px 14px; }
   .brand-tag { display: none; }
   .ghost.new span[data-i18n] { display: none; }
+  .ghost.about { padding: 0 8px; font-size: 12.5px; }
   .ghost.new { width: 36px; padding: 0; }
   .thread { padding: 18px 14px 8px; }
   .starters { grid-template-columns: 1fr; }

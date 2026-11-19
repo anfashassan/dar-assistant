@@ -196,6 +196,11 @@ async def index():
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/overview", include_in_schema=False)
+async def overview():
+    return FileResponse(STATIC / "overview.html")
+
+
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 

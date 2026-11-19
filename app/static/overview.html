@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haya · Product overview</title>
+<meta name="description" content="Haya: a property assistant for DarGlobal projects and Wasalt listings, in English and Arabic.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/overview.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2316181d'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='34' font-weight='600' fill='%23c9a66b' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
+</head>
+<body class="doc">
+<header class="doc-top">
+  <a class="brand" href="/"><span class="logo">H</span><span class="brand-text"><span class="brand-name">Haya <span class="brand-ar">هيا</span></span><span class="brand-tag">Product overview</span></span></a>
+  <nav><a class="ghost" href="/">Try Haya</a><a class="ghost" href="https://github.com/anfashassan/dar-assistant" target="_blank" rel="noopener">Code</a></nav>
+</header>
+
+<main class="doc-main">
+  <section class="hero">
+    <p class="eyebrow">Technical assignment · Junior AI Engineer, Applied AI · DarGlobal</p>
+    <h1>Haya, a property assistant for DarGlobal and Wasalt</h1>
+    <p class="lede">Haya answers questions about DarGlobal's projects and searches Wasalt's property listings, in English
+      and Arabic. Every fact comes from the two companies' public websites, every price from a real listing, and
+      answers link back to their sources.</p>
+    <p class="links"><a href="https://anfashassan-dar-assistant.hf.space">anfashassan-dar-assistant.hf.space</a> ·
+      <a href="https://github.com/anfashassan/dar-assistant">github.com/anfashassan/dar-assistant</a></p>
+    <div class="stats">
+      <div><b>1,709</b><span>pages indexed</span></div>
+      <div><b>37</b><span>DarGlobal projects</span></div>
+      <div><b>3,358</b><span>Wasalt listings</span></div>
+      <div><b>21/21</b><span>answers correct in evaluation</span></div>
+      <div><b>~5 s</b><span>median answer time</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The problem</h2>
+    <p>Someone looking at a DarGlobal project or a home on Wasalt has questions that are spread over many pages:
+      which projects are in Oman, when a tower will be finished, what a villa in north Riyadh costs, whether there is
+      anything under 2 million riyals in Jeddah. Today that means browsing two websites, project pages, filters and
+      articles. Haya puts both sites behind one conversation.</p>
+    <h3>Who it is for</h3>
+    <ul class="two">
+      <li><b>Buyers and investors</b> comparing DarGlobal's branded residences across six countries.</li>
+      <li><b>Home seekers in Saudi Arabia</b> searching Wasalt by city, budget, bedrooms and sale or rent.</li>
+      <li><b>Arabic speakers</b>, with full Arabic questions, answers and a right-to-left interface.</li>
+      <li><b>DarGlobal and Wasalt teams</b>, as a prototype of an assistant that could sit on their own sites.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="features">
+      <div><h4>Answers with sources</h4><p>Facts are cited <span class="cite-ex">1</span> and link to the DarGlobal or Wasalt page they came from. If the sites don't say something, Haya says so instead of guessing.</p></div>
+      <div><h4>Listing search</h4><p>"Villas for sale in Riyadh under 2M" becomes filters over real listings: count, median price, and a spread of options across districts and prices.</p></div>
+      <div><h4>Conversations</h4><p>Follow-ups keep their context: "what about Jeddah?", "only the newest ones", "how many bedrooms do the villas have?" after asking about a project.</p></div>
+      <div><h4>English and Arabic</h4><p>Ask in either language, get the answer in the same one. Arabic questions are matched to English pages.</p></div>
+      <div><h4>Figure check</h4><p>After each answer, every price and year is checked against the sources. The answer shows "6 figures checked against sources", or flags any figure it can't find.</p></div>
+      <div><h4>Voice input</h4><p>Speak a question in English or Arabic. The text appears in the box to edit before sending.</p></div>
+    </div>
+    <figure class="shot"><img src="/static/img/answer.png" alt="Haya answering a villa search with listing cards"><figcaption>A listing search: the overview in words, the listings as cards with photos, prices and links to Wasalt.</figcaption></figure>
+    <div class="shots-row">
+      <figure class="shot"><img src="/static/img/arabic.png" alt="Arabic answer listing DarGlobal projects in Oman"><figcaption>Arabic, right to left: DarGlobal's 13 projects in Oman.</figcaption></figure>
+      <figure class="shot phone"><img src="/static/img/mobile.png" alt="Haya on a phone"><figcaption>On a phone.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="flow">
+      <li><b>Collect.</b> A scraper reads darglobal.co.uk (project pages, press, blog, FAQ) and wasalt.sa (listings, city pages, blog). Listings are stored as structured records.</li>
+      <li><b>Understand the question.</b> Small talk is answered directly. Otherwise Haya pulls out what it can: city, district, property type, budget, bedrooms, project names, country.</li>
+      <li><b>Find the facts.</b> A search over 16,000 text passages finds the relevant pages; listing questions also run through a structured filter, so prices always come from real records.</li>
+      <li><b>Answer.</b> A free language model (via OpenRouter) writes the answer from those sources only, with citations. Haya then checks the figures it used.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Data</h2>
+    <table class="data">
+      <tr><th>Source</th><th>What was collected</th></tr>
+      <tr><td>darglobal.co.uk</td><td>402 pages: 37 projects, partner pages, 68 press releases, 209 blog posts, FAQ, investor and careers pages</td></tr>
+      <tr><td>wasalt.sa</td><td>807 pages and 3,358 listings, sampled evenly across about 60,000 so they cover many cities, types and prices</td></tr>
+      <tr><td>blog.wasalt.sa</td><td>500 articles</td></tr>
+    </table>
+    <ul>
+      <li><b>Collected politely:</b> robots.txt respected, about one request per second, and Wasalt's published policy for AI tools allows extracting public listing content.</li>
+      <li><b>Privacy:</b> broker names and phone numbers on listing pages are not stored.</li>
+      <li><b>Cleaned:</b> rentals and sales are read from the listing URL, city spellings are unified, and 26 listings with impossible prices are left out (for example land "for sale" at SAR 1,828, which was the price per square metre).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Quality</h2>
+    <div class="quality">
+      <div><b>92</b><span>automated tests, run on every change (GitHub Actions also builds and starts the Docker image)</span></div>
+      <div><b>21/21</b><span>answers graded correct by a separate model against facts taken from the data, including trick questions</span></div>
+      <div><b>0.95</b><span>of questions get the right page first in search (1.00 within the top 3)</span></div>
+      <div><b>84</b><span>questions asked in three rounds of testing, every answer read and checked</span></div>
+    </div>
+    <p>Testing found real problems, each now fixed and covered by a test:</p>
+    <ul>
+      <li>The currency "SAR" was read as the Riyadh district "Al Samer", silently filtering every price question.</li>
+      <li>Asked to compare two projects, Haya found pages for only one and said the other didn't exist.</li>
+      <li>Some listings showed the price per square metre as the full price, so "the cheapest land in Dammam" was SAR 1,828.</li>
+      <li>If the model list couldn't be loaded at startup, the app fell back to a source that sometimes returned empty answers.</li>
+      <li>A project still mentioned in older articles (L'Horizon by Elie Saab) no longer has a page on DarGlobal's site; Haya now says so.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Design decisions</h2>
+    <ul class="decisions">
+      <li><b>Prices only from data.</b> Listing questions go through filters over real records; the model never invents a price.</li>
+      <li><b>Exact search first, meaning-based search as a backup.</b> Name-based search is precise for projects and districts. A small multilingual model adds matches for reworded questions ("where is it located?" vs "headquartered in London"). Mixing the two into one ranking made name questions worse (first-result accuracy dropped from 0.89 to 0.72), so the meaning-based results get the last two of six slots instead.</li>
+      <li><b>Built for a free model.</b> One model call per message, answers cached for an hour, free models discovered automatically with fallbacks. If no model answers, Haya still shows the matching sources and listings.</li>
+      <li><b>Runs anywhere Docker runs.</b> One container with the data and the search model inside; it starts in about 8 seconds and re-reads Wasalt every 24 hours.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Limits</h2>
+    <ul>
+      <li>Listing prices are as of the scrape date (November 2026); Wasalt is refreshed daily, DarGlobal's pages are not.</li>
+      <li>Free models take 3 to 15 seconds per answer and have daily limits.</li>
+      <li>Only the English versions of both websites were collected.</li>
+      <li>It is a prototype: no user accounts, no lead capture, no connection to a CRM.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>If this went to production</h2>
+    <ul>
+      <li><b>Live data</b> from Wasalt's listing API and DarGlobal's project database instead of scraping.</li>
+      <li><b>Register interest</b> from the chat: hand qualified leads (project, budget, timeline) to the sales team.</li>
+      <li><b>Arabic sources</b> and a stronger multilingual search model.</li>
+      <li><b>Feedback and analytics:</b> what people ask, where answers fail, which projects draw interest.</li>
+      <li><b>More channels:</b> WhatsApp and the companies' own websites.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="doc-foot">Built by Anfas Hassan · November 2026 · Data from the public websites of DarGlobal and Wasalt, used for this assessment only.</footer>
+</body>
+</html>

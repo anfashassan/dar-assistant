@@ -30,7 +30,7 @@
   // ------------------------------------------------------------------ i18n
   const I18N = {
     en: {
-      tagline: "Property assistant · DarGlobal & Wasalt", newChat: "New chat",
+      tagline: "Property assistant · DarGlobal & Wasalt", newChat: "New chat", about: "About",
       hello: "Hi, I'm Haya", lede: "Ask me about DarGlobal's branded residences, or find homes for sale and rent on Wasalt across Saudi Arabia, in English or Arabic.",
       placeholder: "Ask Haya about a project, a city or a budget…",
       disclaimer: "Haya can make mistakes. Listing prices come from Wasalt and may have changed. Not financial advice.",
@@ -53,7 +53,7 @@
       ],
     },
     ar: {
-      tagline: "مساعدتك العقارية · دار جلوبال ووصلت", newChat: "محادثة جديدة",
+      tagline: "مساعدتك العقارية · دار جلوبال ووصلت", newChat: "محادثة جديدة", about: "عن هيا",
       hello: "مرحباً، أنا هيا", lede: "اسألني عن مساكن دار جلوبال الفاخرة، أو ابحث عن عقارات للبيع والإيجار على وصلت في أنحاء السعودية - بالعربية أو الإنجليزية.",
       placeholder: "اسأل هيا عن مشروع أو مدينة أو ميزانية…",
       disclaimer: "قد تخطئ هيا أحياناً. أسعار العروض من وصلت وقد تكون تغيّرت. ليست نصيحة مالية.",
