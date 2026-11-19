@@ -44,14 +44,16 @@ DARGLOBAL_HINT = re.compile(r"dar ?global|trump|aida|neptune|mouawad|fendi|misso
 
 
 # answered without retrieval
-SMALLTALK = re.compile(
+_SMALLTALK_PHRASE = (
     r"(hi|hello|hey|hiya|yo|salam|salaam|good (morning|afternoon|evening|night)|"
     r"thanks?|thank you( so much)?|thx|ok(ay)?|cool|great|nice|awesome|perfect|bye|goodbye|see you|"
     r"who are you|what are you|who made you|who built you|what can you do|what do you do|help|"
     r"how are you( doing)?|what('?s| is) your name|are you (a )?(real )?(bot|human|person|robot|ai|real|chatgpt|claude)|"
     r"why did you (message|text|contact) me|"
     r"مرحبا|مرحباً|اهلا|أهلا|هلا|السلام عليكم|سلام|شكرا|شكراً|من انت|من أنت|كيف حالك|مع السلامة|ماذا تستطيع)"
-    r"( there| again| haya| bot)?", re.I)
+    r"( there| again| haya| bot)?")
+# one or more phrases: "hi", "hi how are you", "hello thanks"
+SMALLTALK = re.compile(rf"{_SMALLTALK_PHRASE}( (and )?{_SMALLTALK_PHRASE}){{0,3}}", re.I)
 
 
 def is_smalltalk(text: str) -> bool:
@@ -259,7 +261,7 @@ class ChatService:
             return
         t0 = time.time()
         r = self.retrieve(question, history)
-        yield {"type": "meta", "sources": self.source_payload(r.chunks),
+        yield {"type": "meta", "mode": "search", "sources": self.source_payload(r.chunks),
                "listings": self.listing_payload(r.listings), "lang": detect_lang(question)}
 
         context = build_context(r.chunks, r.listings)
@@ -311,7 +313,7 @@ class ChatService:
     async def _smalltalk(self, question: str, history: list[dict]) -> AsyncIterator[dict]:
         t0 = time.time()
         ar = detect_lang(question) == "ar"
-        yield {"type": "meta", "sources": [], "listings": None, "lang": "ar" if ar else "en"}
+        yield {"type": "meta", "mode": "chat", "sources": [], "listings": None, "lang": "ar" if ar else "en"}
         try:
             async for ev in self.llm.stream_chat(build_smalltalk_messages(question, history, self.s.history_turns)):
                 if ev["type"] == "delta":

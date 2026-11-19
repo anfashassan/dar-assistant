@@ -34,7 +34,7 @@
       hello: "Hi, I'm Haya", lede: "Ask me about DarGlobal's branded residences, or find homes for sale and rent on Wasalt across Saudi Arabia, in English or Arabic.",
       placeholder: "Ask Haya about a project, a city or a budget…",
       disclaimer: "Haya can make mistakes. Listing prices come from Wasalt and may have changed. Not financial advice.",
-      thinking: "Looking through DarGlobal & Wasalt…", copy: "Copy", copied: "Copied", retry: "Regenerate",
+      thinking: "Thinking…", searching: "Looking through DarGlobal & Wasalt…", copy: "Copy", copied: "Copied", retry: "Regenerate",
       listings: (n) => `${n.toLocaleString("en-US")} matching listing${n === 1 ? "" : "s"}`, relaxed: "Closest matches", median: "Median",
       bed: (n) => `${n} bed${n === 1 ? "" : "s"}`, bath: (n) => `${n} bath${n === 1 ? "" : "s"}`, sqm: "m²", onRequest: "Price on request",
       sale: "For sale", rent: "For rent", under: "Under", over: "Over", min: "Min", stopped: "Stopped.",
@@ -57,7 +57,7 @@
       hello: "مرحباً، أنا هيا", lede: "اسألني عن مساكن دار جلوبال الفاخرة، أو ابحث عن عقارات للبيع والإيجار على وصلت في أنحاء السعودية - بالعربية أو الإنجليزية.",
       placeholder: "اسأل هيا عن مشروع أو مدينة أو ميزانية…",
       disclaimer: "قد تخطئ هيا أحياناً. أسعار العروض من وصلت وقد تكون تغيّرت. ليست نصيحة مالية.",
-      thinking: "أبحث في دار جلوبال ووصلت…", copy: "نسخ", copied: "تم النسخ", retry: "إعادة التوليد",
+      thinking: "لحظة…", searching: "أبحث في دار جلوبال ووصلت…", copy: "نسخ", copied: "تم النسخ", retry: "إعادة التوليد",
       listings: (n) => `${n.toLocaleString("ar-SA")} عرض مطابق`, relaxed: "أقرب النتائج", median: "الوسيط",
       bed: (n) => `${n} غرف`, bath: (n) => `${n} حمام`, sqm: "م²", onRequest: "السعر عند الطلب",
       sale: "للبيع", rent: "للإيجار", under: "أقل من", over: "أكثر من", min: "من", stopped: "تم الإيقاف.",
@@ -309,7 +309,10 @@
           const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("\n");
           if (!data) continue;
           let ev; try { ev = JSON.parse(data); } catch { continue; }
-          if (ev.type === "meta") { renderListings($(".listings", el), ev.listings); sources = ev.sources || []; }
+          if (ev.type === "meta") {
+            renderListings($(".listings", el), ev.listings); sources = ev.sources || [];
+            if (ev.mode === "search") $(".thinking span", el)?.replaceChildren(t("searching"));
+          }
           else if (ev.type === "delta") { thinking.remove(); answer += ev.text; if (!raf) raf = requestAnimationFrame(paint); }
           else if (ev.type === "verify") verification = ev;
           else if (ev.type === "done") meta = ev;

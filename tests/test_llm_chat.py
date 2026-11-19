@@ -151,9 +151,11 @@ def test_network_outage_degrades_to_retrieval_only(kb):
 def test_smalltalk_detection():
     from app.chat import is_smalltalk
     for q in ("hi", "Hello!", "who are you", "Who are you?", "thanks", "thank you so much", "why did you message me",
-              "what can you do?", "مرحبا", "من أنت؟", "شكرا"):
+              "what can you do?", "مرحبا", "من أنت؟", "شكرا", "Hi, How are you", "hello and thanks!",
+              "hey there, who are you?", "مرحبا كيف حالك"):
         assert is_smalltalk(q), q
-    for q in ("hi, show me villas in Riyadh", "who are DarGlobal's partners?", "thanks, and what about Jeddah?",
+    for q in ("hi, show me villas in Riyadh", "hi how are you, any villas in Jeddah?",
+              "who are DarGlobal's partners?", "thanks, and what about Jeddah?",
               "where is dar global located", "what is difference between burger and pizza", "help me find a villa"):
         assert not is_smalltalk(q), q
 
@@ -164,6 +166,7 @@ def test_smalltalk_skips_retrieval_and_sources(kb):
     svc = ChatService(Settings(), kb, llm)
     evs = asyncio.run(collect(svc.answer("who are you?", [])))
     assert evs[0]["type"] == "meta" and evs[0]["sources"] == [] and evs[0]["listings"] is None
+    assert evs[0]["mode"] == "chat"   # the UI shows "Thinking…", not "Looking through DarGlobal…"
     sent = llm._client.calls[0]["messages"]
     assert "REFERENCE NOTES" not in sent[-1]["content"] and "small talk" in sent[0]["content"]
 
