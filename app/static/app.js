@@ -343,39 +343,53 @@
   // nothing is sent until the user sends it.
   const micBtn = $("#micBtn");
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null;
+  let rec = null, listening = false, limit = 0;
   function showTip(msg) {
     const d = $(".disclaimer");
     d.textContent = msg; d.classList.add("warn");
     setTimeout(() => { d.textContent = t("disclaimer"); d.classList.remove("warn"); }, 5000);
   }
-  function startListening() {
+  // Browsers end a recognition session after a pause; restart it until the user taps stop.
+  function startSession() {
+    const before = input.value.trim();
     rec = new Recognition();
     rec.lang = lang === "ar" ? "ar-SA" : "en-US";
     rec.interimResults = true;
-    const typed = input.value.trim();
+    rec.continuous = true;
     rec.onresult = (e) => {
-      const spoken = [...e.results].map((r) => r[0].transcript).join("");
-      input.value = (typed ? typed + " " : "") + spoken;
+      const spoken = [...e.results].map((r) => r[0].transcript).join(" ").replace(/\s+/g, " ").trim();
+      input.value = (before ? before + " " : "") + spoken;
       autosize();
     };
-    rec.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") showTip(t("micBlocked")); };
-    rec.onend = () => {
-      rec = null; micBtn.classList.remove("rec"); input.placeholder = t("placeholder");
-      input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") { listening = false; showTip(t("micBlocked")); }
     };
-    rec.start();
+    rec.onend = () => (listening ? startSession() : finishListening());
+    try { rec.start(); } catch { listening = false; finishListening(); }
+  }
+  function startListening() {
+    listening = true;
     micBtn.classList.add("rec"); input.placeholder = t("listening");
+    limit = setTimeout(stopListening, 120000);
+    startSession();
+  }
+  function stopListening() { listening = false; clearTimeout(limit); rec?.stop(); }
+  function finishListening() {
+    rec = null; clearTimeout(limit);
+    micBtn.classList.remove("rec"); input.placeholder = t("placeholder");
+    input.focus(); input.setSelectionRange(input.value.length, input.value.length);
   }
   if (Recognition) {
     micBtn.hidden = false;
-    micBtn.onclick = () => (rec ? rec.stop() : startListening());
+    micBtn.onclick = () => (listening ? stopListening() : startListening());
   }
 
   // ----------------------------------------------------------------- events
-  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); rec?.stop(); send(input.value); });
+  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); if (listening) stopListening(); send(input.value); });
   input.addEventListener("input", autosize);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (listening) stopListening(); send(input.value); }
+  });
   stopBtn.addEventListener("click", () => controller?.abort());
   thread.addEventListener("click", (e) => {
     const s = e.target.closest(".starter"); if (s) return send(s.dataset.q);
